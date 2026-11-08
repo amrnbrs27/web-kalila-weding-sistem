@@ -1,33 +1,18 @@
-const express = require("express");
-const cors = require("cors");
-const dotenv = require("dotenv");
-const connectDB = require("./config/db");
+const path = require('path');
+const dotenv = require('dotenv');
 
-// Load environment variables dari .env
-dotenv.config();
+// Load environment variables dari file .env di folder backend
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-// Inisialisasi Express app
-const app = express();
+const connectDB = require('./config/db');
+const app = require('./app');
 
-// Connect Database
+// Hubungkan ke database MongoDB
 connectDB();
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Rute Pengujian (Health Check)
-app.get("/", (req, res) => {
-    res.status(200).json({
-        success: true,
-        message: "API Booking Dekor & Catering Kalila siap digunakan! 🚀",
-    });
-});
-
-// Port Server
+// Port server
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-    console.log(`[Server] Running on http://localhost:${PORT}`);
+  console.log(`[Server] Running on http://localhost:${PORT}`);
 });
