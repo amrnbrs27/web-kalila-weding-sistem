@@ -33,3 +33,4 @@ exports.updateSettingsSchema = z.object({
     })
     .optional(),
 });
+

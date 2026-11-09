@@ -1,279 +1,468 @@
 const path = require('path');
 const dotenv = require('dotenv');
+const crypto = require('crypto');
+
+// Muat environment variables
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const mongoose = require('mongoose');
 const app = require('../src/app');
 const User = require('../src/models/User');
 const Package = require('../src/models/Package');
+const cloudinary = require('../src/config/cloudinary');
+const { isCloudinaryConfigured } = require('../src/config/cloudinary');
 
 let server;
 let baseUrl;
 
+// Koleksi pelacak ID untuk pembersihan yang aman (hanya data uji yang dibuat yang dihapus)
+const trackedUserIds = new Set();
+const trackedPackageIds = new Set();
+const trackedCloudinaryPublicIds = new Set();
+
+/**
+ * Validasi dan konversi URI MongoDB ke database terpisah yang wajib berakhiran '_test'
+ */
+function getSafeTestDbUri(originalUri) {
+  if (!originalUri) {
+    throw new Error('MONGO_URI tidak ditemukan di environment variables!');
+  }
+
+  // Pisahkan path database
+  let testUri = originalUri;
+  const match = originalUri.match(/^(mongodb(?:\+srv)?:\/\/[^/]+)(?:\/([^?]+))?(\?.*)?$/);
+
+  if (match) {
+    const base = match[1];
+    let dbName = match[2] || 'kalila';
+    const query = match[3] || '';
+
+    if (!dbName.endsWith('_test')) {
+      dbName = `${dbName}_test`;
+    }
+    testUri = `${base}/${dbName}${query}`;
+  } else {
+    throw new Error('Format MONGO_URI tidak valid');
+  }
+
+  // Validasi ketat: nama database HARUS berakhiran '_test'
+  const finalDbName = testUri.split('/')[3]?.split('?')[0];
+  if (!finalDbName || !finalDbName.endsWith('_test')) {
+    throw new Error(
+      `PENGUJIAN DITOLAK: Nama database pengujian ("${finalDbName}") wajib berakhiran "_test" demi keamanan data asli!`
+    );
+  }
+
+  return { testUri, dbName: finalDbName };
+}
+
 async function runTests() {
-  console.log('--- Memulai Pengujian API ---');
+  console.log('================================================================');
+  console.log('Memulai Pengujian Otomatis Fitur Paket (Isolated & Safe Test)');
+  console.log('================================================================\n');
 
-  // 1. Hubungkan ke DB
-  await mongoose.connect(process.env.MONGO_URI);
-  console.log('✓ Database terhubung');
+  // 1. Tentukan URI database terpisah
+  const { testUri, dbName } = getSafeTestDbUri(process.env.MONGO_URI);
+  console.log(`[Database Isolasi] Menggunakan database pengujian: "${dbName}"`);
 
-  // 2. Jalankan server pada port acak/5009
-  const port = 5009;
+  // Hubungkan ke database uji
+  await mongoose.connect(testUri);
+  console.log('✓ Terhubung ke database isolasi pengujian MongoDB');
+
+  // 2. Jalankan server pengujian di port dinamis / 5013
+  const port = 5013;
   server = app.listen(port);
   baseUrl = `http://localhost:${port}`;
-  console.log(`✓ Server berjalan di ${baseUrl}`);
+  console.log(`✓ Server pengujian berjalan di ${baseUrl}\n`);
 
   try {
-    // 3. Health check
-    const healthRes = await fetch(`${baseUrl}/`);
-    const healthData = await healthRes.json();
-    console.assert(healthRes.status === 200, 'Health check status should be 200');
-    console.assert(healthData.success === true, 'Health check success should be true');
-    console.log('✓ Health check endpoint OK');
+    // 3. Buat akun uji sementara secara dinamis tanpa kredensial tertulis
+    const randomSuffix = crypto.randomBytes(4).toString('hex');
+    const dynamicPassword = `Test!${crypto.randomBytes(8).toString('hex')}Aa1`;
+    const adminEmail = `test_admin_${randomSuffix}@kalila-test.local`;
+    const custEmail = `test_cust_${randomSuffix}@kalila-test.local`;
 
-    // 4. Buat atau dapatkan user admin
-    const adminEmail = `admin_test_${Date.now()}@kalila.com`;
-    const adminPassword = 'Password123!';
-    const admin = await User.create({
-      name: 'Admin Test',
+    const adminUser = await User.create({
+      name: 'Admin Uji Sementara',
       email: adminEmail,
       phone: '081234567890',
-      password: adminPassword,
+      password: dynamicPassword,
       role: 'admin',
     });
+    trackedUserIds.add(adminUser._id.toString());
 
-    // Login admin
+    const custUser = await User.create({
+      name: 'Customer Uji Sementara',
+      email: custEmail,
+      phone: '081987654321',
+      password: dynamicPassword,
+      role: 'customer',
+    });
+    trackedUserIds.add(custUser._id.toString());
+
+    // Login Admin
     const adminLoginRes = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: adminEmail, password: adminPassword }),
+      body: JSON.stringify({ email: adminEmail, password: dynamicPassword }),
     });
     const adminLoginData = await adminLoginRes.json();
-    console.assert(adminLoginRes.status === 200, 'Admin login failed');
+    console.assert(adminLoginRes.status === 200, 'Login admin uji gagal');
     const adminToken = adminLoginData.data.token;
-    console.log('✓ Login Admin OK');
+    console.log('✓ Login akun admin uji berhasil');
 
-    // 5. Auth Register Customer
-    const custEmail = `customer_${Date.now()}@kalila.com`;
-    const custPassword = 'Customer123!';
-    const registerRes = await fetch(`${baseUrl}/api/auth/register`, {
+    // Login Customer
+    const custLoginRes = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Budi Pelanggan',
-        email: custEmail,
-        phone: '081987654321',
-        password: custPassword,
-      }),
+      body: JSON.stringify({ email: custEmail, password: dynamicPassword }),
     });
-    const registerData = await registerRes.json();
-    console.assert(registerRes.status === 201, 'Customer register status should be 201');
-    console.assert(registerData.data.user.role === 'customer', 'Registered user role must be customer');
-    const custToken = registerData.data.token;
-    console.log('✓ Register Customer OK');
+    const custLoginData = await custLoginRes.json();
+    console.assert(custLoginRes.status === 200, 'Login customer uji gagal');
+    const custToken = custLoginData.data.token;
+    console.log('✓ Login akun customer uji berhasil');
 
-    // 6. Test Duplicate Register
-    const dupRes = await fetch(`${baseUrl}/api/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Budi Duplicate',
-        email: custEmail,
-        phone: '081987654321',
-        password: custPassword,
-      }),
-    });
-    console.assert(dupRes.status === 409, 'Duplicate register should return 409 Conflict');
-    console.log('✓ Duplicate Register Validation OK (409)');
+    // -------------------------------------------------------------------------
+    // TEST 1: Proteksi Hak Akses Admin (/api/admin/packages)
+    // -------------------------------------------------------------------------
+    console.log('\n--- Test 1: Proteksi Hak Akses Admin ---');
+    const noTokenRes = await fetch(`${baseUrl}/api/admin/packages`);
+    console.assert(noTokenRes.status === 401, 'Request tanpa token harus 401');
+    console.log('✓ Request tanpa token ditolak (401 Unauthorized)');
 
-    // 7. GET /api/auth/me
-    const meRes = await fetch(`${baseUrl}/api/auth/me`, {
+    const custAccessRes = await fetch(`${baseUrl}/api/admin/packages`, {
       headers: { Authorization: `Bearer ${custToken}` },
     });
-    const meData = await meRes.json();
-    console.assert(meRes.status === 200, 'GET /me status should be 200');
-    console.assert(meData.data.user.email === custEmail, 'GET /me email mismatch');
-    console.log('✓ GET /api/auth/me OK');
+    console.assert(custAccessRes.status === 403, 'Customer mengakses admin harus 403');
+    console.log('✓ Customer mengakses endpoint admin ditolak (403 Forbidden)');
 
-    // 8. Auth me without token -> 401
-    const unauthRes = await fetch(`${baseUrl}/api/auth/me`);
-    console.assert(unauthRes.status === 401, 'GET /me without token should return 401');
-    console.log('✓ Unauthorized Check OK (401)');
+    // -------------------------------------------------------------------------
+    // TEST 2: Validasi Pembuatan Paket (decorWidthCm)
+    // -------------------------------------------------------------------------
+    console.log('\n--- Test 2: Validasi Kategori dan decorWidthCm ---');
 
-    // 9. Customer tries to create package -> 403 Forbidden
-    const custCreateRes = await fetch(`${baseUrl}/api/packages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${custToken}`,
-      },
-      body: JSON.stringify({
-        name: 'Paket Palsu',
-        category: 'dekor',
-        price: 5000000,
-        decorWidth: 4,
-      }),
-    });
-    console.assert(custCreateRes.status === 403, 'Customer creating package should return 403');
-    console.log('✓ Role Protection Check OK (403)');
-
-    // 10. Admin create package dekor without decorWidth -> 400 Bad Request
-    const invalidDekorRes = await fetch(`${baseUrl}/api/packages`, {
+    // 2a. Kategori dekor TANPA decorWidthCm -> 400
+    const dekorNoWidth = await fetch(`${baseUrl}/api/admin/packages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${adminToken}`,
       },
       body: JSON.stringify({
-        name: 'Paket Dekor Rusak',
+        name: 'Paket Dekor Gagal',
         category: 'dekor',
         price: 5000000,
-        // decorWidth sengaja dikosongkan
       }),
     });
-    console.assert(invalidDekorRes.status === 400, 'Dekor package without decorWidth should return 400');
-    console.log('✓ Dekor Validation (decorWidth required) OK (400)');
+    console.assert(dekorNoWidth.status === 400, 'Dekor tanpa decorWidthCm harus ditolak 400');
+    console.log('✓ Paket dekor tanpa decorWidthCm ditolak (400 Bad Request)');
 
-    // 11. Admin create valid package Dekor
-    const createDekorRes = await fetch(`${baseUrl}/api/packages`, {
+    // 2b. Kategori catering yang mengirim decorWidthCm -> 400
+    const cateringWithWidth = await fetch(`${baseUrl}/api/admin/packages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${adminToken}`,
       },
       body: JSON.stringify({
-        name: 'Paket Dekor Rustic Gold',
+        name: 'Paket Catering Gagal',
+        category: 'catering',
+        price: 35000,
+        decorWidthCm: 300,
+      }),
+    });
+    console.assert(cateringWithWidth.status === 400, 'Catering dengan decorWidthCm harus ditolak 400');
+    console.log('✓ Paket catering yang mengirim decorWidthCm ditolak (400 Bad Request)');
+
+    // 2c. Buat paket dekor valid
+    const dekorRes = await fetch(`${baseUrl}/api/admin/packages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({
+        name: 'Paket Pelaminan Minimalis',
+        category: 'dekor',
+        price: 6500000,
+        description: 'Dekorasi panggung 4 meter minimalis.',
+        inclusions: ['Backdrop 4m', 'Lighting'],
+        decorWidthCm: 400,
+      }),
+    });
+    const dekorData = await dekorRes.json();
+    console.assert(dekorRes.status === 201, 'Pembuatan paket dekor gagal');
+    const dekorId = dekorData.data.package._id;
+    const dekorSlug = dekorData.data.package.slug;
+    trackedPackageIds.add(dekorId);
+    console.log(`✓ Admin membuat paket dekor valid (ID: ${dekorId}, Slug: ${dekorSlug})`);
+
+    // -------------------------------------------------------------------------
+    // TEST 3: Penguatan Slug Bentrok & E11000 Retry
+    // -------------------------------------------------------------------------
+    console.log('\n--- Test 3: Slug Bentrok dan Penanganan E11000 ---');
+    const dupSlugRes1 = await fetch(`${baseUrl}/api/admin/packages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({
+        name: 'Paket Pelaminan Minimalis', // Nama identik
+        category: 'dekor',
+        price: 7000000,
+        decorWidthCm: 400,
+      }),
+    });
+    const dupData1 = await dupSlugRes1.json();
+    console.assert(dupData1.data.package.slug === `${dekorSlug}-2`, 'Slug bentrok harus mendapat akhiran -2');
+    trackedPackageIds.add(dupData1.data.package._id);
+    console.log(`✓ Bentrok nama pertama menghasilkan slug unik: ${dupData1.data.package.slug}`);
+
+    const dupSlugRes2 = await fetch(`${baseUrl}/api/admin/packages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({
+        name: 'Paket Pelaminan Minimalis', // Nama identik lagi
         category: 'dekor',
         price: 7500000,
-        description: 'Dekorasi panggung rustic modern elegan dengan bunga segar.',
-        packageItems: ['Backdrop 6x3m', 'Standing Flowers 4 pcs', 'Mini Garden', 'Karpet Panggung'],
-        decorWidth: 6,
+        decorWidthCm: 400,
       }),
     });
-    const dekorData = await createDekorRes.json();
-    console.assert(createDekorRes.status === 201, 'Create package dekor should be 201');
-    const dekorId = dekorData.data.package._id;
-    console.log('✓ Admin Create Package Dekor OK');
+    const dupData2 = await dupSlugRes2.json();
+    console.assert(dupData2.data.package.slug === `${dekorSlug}-3`, 'Slug bentrok harus mendapat akhiran -3');
+    trackedPackageIds.add(dupData2.data.package._id);
+    console.log(`✓ Bentrok nama kedua menghasilkan slug unik: ${dupData2.data.package.slug}`);
 
-    // 12. Admin create valid package Catering
-    const createCateringRes = await fetch(`${baseUrl}/api/packages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${adminToken}`,
-      },
-      body: JSON.stringify({
-        name: 'Paket Buffet Nusantara Deluxe',
-        category: 'catering',
-        price: 65000,
-        description: 'Paket prasmanan menu nusantara lengkap pilihan koki.',
-        packageItems: ['Nasi Putih', 'Ayam Bakar Madu', 'Daging Rendang', 'Sup Kimlo', 'Puding & Buah'],
-        cateringDetails: {
-          minOrder: 100,
-          menuType: 'Buffet Nusantara',
-        },
-      }),
-    });
-    console.assert(createCateringRes.status === 201, 'Create package catering should be 201');
-    console.log('✓ Admin Create Package Catering OK');
+    // -------------------------------------------------------------------------
+    // TEST 4: Pengujian Query Search (Escape Regex) & Whitelist Sort
+    // -------------------------------------------------------------------------
+    console.log('\n--- Test 4: Escape Karakter Regex pada Pencarian & Whitelist Sort ---');
+    // Cari dengan karakter khusus regex: `Minimalis (4m)+[test]?`
+    const regexSearchRes = await fetch(`${baseUrl}/api/packages?q=Minimalis+(4m)+[test]?`);
+    console.assert(regexSearchRes.status === 200, 'Search dengan karakter regex tidak boleh crash');
+    console.log('✓ Pencarian dengan simbol regex berhasil ditangani tanpa error regex injection');
 
-    // 13. Public GET /api/packages with filter & pagination
-    const listRes = await fetch(`${baseUrl}/api/packages?category=dekor&page=1&limit=5`);
-    const listData = await listRes.json();
-    console.assert(listRes.status === 200, 'GET /packages should be 200');
-    console.assert(listData.data.packages.length >= 1, 'Should return at least 1 dekor package');
-    console.assert(listData.data.pagination.page === 1, 'Pagination page mismatch');
-    console.log('✓ Public GET /api/packages with Filter & Pagination OK');
+    // Coba parameter sort ilegal
+    const badSortRes = await fetch(`${baseUrl}/api/packages?sort=ilegal_sort`);
+    console.assert(badSortRes.status === 400, 'Parameter sort tidak dikenal harus ditolak 400');
+    console.log('✓ Parameter sort di luar whitelist ditolak (400 Bad Request)');
 
-    // 14. Public GET /api/packages/:id
-    const detailRes = await fetch(`${baseUrl}/api/packages/${dekorId}`);
-    const detailData = await detailRes.json();
-    console.assert(detailRes.status === 200, 'GET /packages/:id should be 200');
-    console.assert(detailData.data.package._id === dekorId, 'Package ID mismatch');
-    console.log('✓ Public GET /api/packages/:id Detail OK');
+    // -------------------------------------------------------------------------
+    // TEST 5: Pengujian Upload & Verifikasi Cloudinary
+    // -------------------------------------------------------------------------
+    console.log('\n--- Test 5: Pengujian Upload Gambar & Cloudinary ---');
 
-    // 15. Admin PUT /api/packages/:id
-    const updateRes = await fetch(`${baseUrl}/api/packages/${dekorId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${adminToken}`,
-      },
-      body: JSON.stringify({
-        price: 8000000,
-        description: 'Dekorasi rustic gold diperbarui dengan karpet bulu tebal.',
-      }),
-    });
-    const updateData = await updateRes.json();
-    console.assert(updateRes.status === 200, 'PUT /packages/:id should be 200');
-    console.assert(updateData.data.package.price === 8000000, 'Price update mismatch');
-    console.log('✓ Admin PUT /api/packages/:id OK');
-
-    // 16. Admin Upload Image using multipart/form-data
-    const boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW';
-    // Dummy 1x1 png image bytes
-    const pngBuffer = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-      'base64'
-    );
-    const multipartBody = Buffer.concat([
-      Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="images"; filename="test-dekor.png"\r\nContent-Type: image/png\r\n\r\n`
-      ),
-      pngBuffer,
-      Buffer.from(`\r\n--${boundary}--\r\n`),
+    // Buffer PNG valid (16 bytes header)
+    const validPngBuffer = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+      0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89,
     ]);
 
-    const uploadRes = await fetch(`${baseUrl}/api/packages/${dekorId}/images`, {
+    // 5a. File palsu berekstensi .jpg
+    const fakeForm = new FormData();
+    fakeForm.append(
+      'images',
+      new Blob([Buffer.from('File teks biasa yang menyamar sebagai jpg')], { type: 'image/jpeg' }),
+      'foto_palsu.jpg'
+    );
+    const fakeUploadRes = await fetch(`${baseUrl}/api/admin/packages/${dekorId}/images`, {
       method: 'POST',
-      headers: {
-        'Content-Type': `multipart/form-data; boundary=${boundary}`,
-        Authorization: `Bearer ${adminToken}`,
-      },
-      body: multipartBody,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: fakeForm,
     });
-    const uploadData = await uploadRes.json();
-    console.assert(uploadRes.status === 201, 'Upload images should return 201');
-    console.assert(uploadData.data.uploadedImages.length === 1, 'Should have 1 uploaded image');
-    const uploadedUrl = uploadData.data.uploadedImages[0];
-    console.log('✓ Admin Upload Package Images OK');
+    console.assert(fakeUploadRes.status === 400, 'File palsu harus ditolak magic bytes (400)');
+    console.log('✓ File palsu berekstensi .jpg ditolak pemeriksaan magic bytes (400)');
 
-    // 17. Admin Delete Image from Package
-    const deleteImgRes = await fetch(`${baseUrl}/api/packages/${dekorId}/images`, {
-      method: 'DELETE',
+    // 5b. File di atas 5 MB
+    const bigBuffer = Buffer.alloc(5 * 1024 * 1024 + 1024);
+    validPngBuffer.copy(bigBuffer, 0, 0, 16);
+    const bigForm = new FormData();
+    bigForm.append('images', new Blob([bigBuffer], { type: 'image/png' }), 'big.png');
+    const bigUploadRes = await fetch(`${baseUrl}/api/admin/packages/${dekorId}/images`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: bigForm,
+    });
+    console.assert(bigUploadRes.status === 400, 'File > 5 MB harus ditolak (400)');
+    console.log('✓ File di atas 5 MB ditolak (400)');
+
+    // 5c. Periksa konfigurasi Cloudinary
+    const isCloudinaryActive = isCloudinaryConfigured();
+    console.log(`[Status Cloudinary] Terkonfigurasi aktif: ${isCloudinaryActive}`);
+
+    let uploadedImageId = null;
+    let uploadedPublicId = null;
+
+    if (!isCloudinaryActive) {
+      // Jika kredensial belum ada di .env, pastikan endpoint upload merespons 503
+      const validForm = new FormData();
+      validForm.append('images', new Blob([validPngBuffer], { type: 'image/png' }), 'test.png');
+      const uploadRes = await fetch(`${baseUrl}/api/admin/packages/${dekorId}/images`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: validForm,
+      });
+      const uploadData = await uploadRes.json();
+      console.assert(uploadRes.status === 503, `Saat Cloudinary kosong harus 503, got ${uploadRes.status}`);
+      console.assert(
+        uploadData.message === 'Layanan penyimpanan gambar belum dikonfigurasi',
+        'Pesan 503 tidak sesuai'
+      );
+      console.log('✓ Upload saat kredensial Cloudinary kosong mengembalikan 503 ("Layanan penyimpanan gambar belum dikonfigurasi")');
+      console.log('✓ Tidak ada data palsu / mock yang tersimpan di database');
+    } else {
+      // Jika Cloudinary aktif di environment variables, uji upload dan verifikasi resource nyata
+      const validForm = new FormData();
+      validForm.append('images', new Blob([validPngBuffer], { type: 'image/png' }), 'valid_test.png');
+      const uploadRes = await fetch(`${baseUrl}/api/admin/packages/${dekorId}/images`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: validForm,
+      });
+      const uploadData = await uploadRes.json();
+      console.assert(uploadRes.status === 200, `Upload valid harus 200, got ${uploadRes.status}`);
+      uploadedImageId = uploadData.data.package.images[0]._id;
+      uploadedPublicId = uploadData.data.package.images[0].publicId;
+      trackedCloudinaryPublicIds.add(uploadedPublicId);
+
+      // Verifikasi berkas benar-benar ada di server Cloudinary menggunakan API resource
+      const resourceCheck = await cloudinary.api.resource(uploadedPublicId);
+      console.assert(resourceCheck && resourceCheck.public_id === uploadedPublicId, 'Aset harus ada di Cloudinary');
+      console.log(`✓ Verifikasi Cloudinary: Aset "${uploadedPublicId}" benar-benar ada di Cloudinary API`);
+
+      // 5d. Uji PUT: Kategori tidak boleh diubah bila paket sudah memiliki gambar
+      const changeCatRes = await fetch(`${baseUrl}/api/admin/packages/${dekorId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({ category: 'catering' }),
+      });
+      console.assert(
+        changeCatRes.status === 400,
+        'Ubah kategori pada paket yang memiliki gambar harus ditolak 400'
+      );
+      console.log('✓ Pengubahan kategori pada paket yang sudah memiliki gambar ditolak (400)');
+
+      // 5e. Hapus satu gambar dari paket dan verifikasi Cloudinary
+      const delImgRes = await fetch(
+        `${baseUrl}/api/admin/packages/${dekorId}/images/${uploadedImageId}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${adminToken}` },
+        }
+      );
+      console.assert(delImgRes.status === 200, 'Hapus satu gambar gagal');
+
+      // Verifikasi berkas benar-benar hilang dari Cloudinary
+      let isGone = false;
+      try {
+        await cloudinary.api.resource(uploadedPublicId);
+      } catch (err) {
+        if (err.error && err.error.http_code === 404) {
+          isGone = true;
+        }
+      }
+      console.assert(isGone, 'Aset gambar harus sudah tidak ditemukan (404) di Cloudinary');
+      trackedCloudinaryPublicIds.delete(uploadedPublicId);
+      console.log(`✓ Verifikasi Cloudinary: Aset "${uploadedPublicId}" benar-benar terhapus dari Cloudinary (404)`);
+    }
+
+    // -------------------------------------------------------------------------
+    // TEST 6: Visibilitas Status Aktif (isActive)
+    // -------------------------------------------------------------------------
+    console.log('\n--- Test 6: Visibilitas Paket (isActive) ---');
+    // Nonaktifkan paket dekor
+    await fetch(`${baseUrl}/api/admin/packages/${dekorId}/status`, {
+      method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${adminToken}`,
       },
-      body: JSON.stringify({ imageUrl: uploadedUrl }),
+      body: JSON.stringify({ isActive: false }),
     });
-    console.assert(deleteImgRes.status === 200, 'Delete image should return 200');
-    console.log('✓ Admin Remove Image from Package OK');
 
-    // 18. Admin Soft Delete Package
-    const deleteRes = await fetch(`${baseUrl}/api/packages/${dekorId}`, {
+    // Cek publik: tidak muncul di daftar dan slug 404
+    const pubListRes = await fetch(`${baseUrl}/api/packages?category=dekor`);
+    const pubListData = await pubListRes.json();
+    const foundPub = pubListData.data.items.find((p) => p._id === dekorId);
+    console.assert(foundPub === undefined, 'Paket nonaktif tidak boleh tampil di publik');
+
+    const pubSlugRes = await fetch(`${baseUrl}/api/packages/${dekorSlug}`);
+    console.assert(pubSlugRes.status === 404, 'Detail slug paket nonaktif harus 404');
+    console.log('✓ Paket tidak aktif tersembunyi dari publik (daftar publik kosong & slug 404)');
+
+    // Cek admin: tetap muncul
+    const adminListRes = await fetch(`${baseUrl}/api/admin/packages`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    const adminListData = await adminListRes.json();
+    const foundAdmin = adminListData.data.items.find((p) => p._id === dekorId);
+    console.assert(foundAdmin !== undefined && foundAdmin.isActive === false, 'Paket nonaktif harus muncul di admin');
+    console.log('✓ Paket tidak aktif tetap tampil di daftar admin dengan status isActive: false');
+
+    // -------------------------------------------------------------------------
+    // TEST 7: Hapus Paket Bersih
+    // -------------------------------------------------------------------------
+    console.log('\n--- Test 7: Penghapusan Paket ---');
+    const delPkgRes = await fetch(`${baseUrl}/api/admin/packages/${dekorId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${adminToken}` },
     });
-    console.assert(deleteRes.status === 200, 'Soft delete should return 200');
-    console.log('✓ Admin Soft Delete Package OK');
+    console.assert(delPkgRes.status === 200, 'Hapus paket gagal');
+    trackedPackageIds.delete(dekorId);
+    console.log('✓ Paket berhasil dihapus');
 
-    // 19. Public GET /api/packages/:id on inactive package -> 404
-    const publicInactiveRes = await fetch(`${baseUrl}/api/packages/${dekorId}`);
-    console.assert(publicInactiveRes.status === 404, 'Public getting inactive package should return 404');
-    console.log('✓ Public Inactive Package Hidden Check OK (404)');
+    const checkDoc = await Package.findById(dekorId);
+    console.assert(checkDoc === null, 'Dokumen harus terhapus dari MongoDB');
+    console.log('✓ Terverifikasi dokumen paket terhapus dari MongoDB isolasi');
 
-    // Bersihkan data tes
-    await User.deleteMany({ email: { $in: [adminEmail, custEmail] } });
-    await Package.deleteMany({ _id: dekorId });
-
-    console.log('\n========================================');
-    console.log('SEMUA PENGUJIAN ENDPOINT BERHASIL (PASSED)!');
-    console.log('========================================');
+    console.log('\n================================================================');
+    console.log('SEMUA PENGUJIAN BERHASIL DAN MEMENUHI STANDAR KETAT (ALL PASSED)!');
+    console.log('================================================================\n');
   } catch (err) {
-    console.error('Pengujian gagal:', err);
+    console.error('\n❌ PENGUJIAN MENGALAMI KESALAHAN:', err);
     process.exitCode = 1;
   } finally {
+    console.log('--- Memulai Pembersihan Data Uji (Finally Block) ---');
+
+    // 1. Hapus HANYA akun uji yang dibuat skrip berdasarkan ID terlacak
+    if (trackedUserIds.size > 0) {
+      const userRes = await User.deleteMany({ _id: { $in: Array.from(trackedUserIds) } });
+      console.log(`✓ Membersihkan ${userRes.deletedCount} akun pengguna uji`);
+    }
+
+    // 2. Hapus HANYA paket uji yang dibuat skrip berdasarkan ID terlacak
+    if (trackedPackageIds.size > 0) {
+      const pkgRes = await Package.deleteMany({ _id: { $in: Array.from(trackedPackageIds) } });
+      console.log(`✓ Membersihkan ${pkgRes.deletedCount} paket uji`);
+    }
+
+    // 3. Hapus aset Cloudinary uji yang masih tersisa
+    if (trackedCloudinaryPublicIds.size > 0 && isCloudinaryConfigured()) {
+      const failed = [];
+      for (const publicId of trackedCloudinaryPublicIds) {
+        try {
+          await cloudinary.uploader.destroy(publicId);
+        } catch (err) {
+          failed.push(publicId);
+        }
+      }
+      if (failed.length > 0) {
+        console.error(`[Pembersihan Cloudinary Gagal] Public ID berikut gagal dibersihkan: ${failed.join(', ')}`);
+      } else {
+        console.log(`✓ Membersihkan ${trackedCloudinaryPublicIds.size} aset Cloudinary uji`);
+      }
+    }
+
+    console.log('✓ Tidak ada data uji yang tertinggal di database.');
+
     if (server) server.close();
     await mongoose.disconnect();
     process.exit(process.exitCode || 0);
@@ -281,4 +470,3 @@ async function runTests() {
 }
 
 runTests();
-

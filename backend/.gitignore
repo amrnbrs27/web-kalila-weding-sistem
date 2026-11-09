@@ -1,6 +1,7 @@
 # Uploads
 uploads/
 !uploads/.gitkeep
+.mongodb_data/
 
 # Logs
 logs

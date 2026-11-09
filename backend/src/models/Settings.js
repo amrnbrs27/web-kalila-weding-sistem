@@ -68,3 +68,4 @@ settingsSchema.statics.getSettings = async function () {
 };
 
 module.exports = mongoose.model('Settings', settingsSchema);
+

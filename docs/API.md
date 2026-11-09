@@ -163,31 +163,29 @@ Mengambil data profil pengguna yang saat ini sedang login berdasarkan token JWT.
 
 ---
 
-## 2. Modul Paket Layanan (`/api/packages`)
+## 2. Modul Paket Layanan Publik (`/api/packages`)
 
-Modul ini mengelola katalog paket untuk tiga kategori: `dekor`, `catering`, dan `wedding`.
+Modul ini diakses oleh pengunjung umum (tanpa login). Hanya menampilkan paket yang aktif (`isActive: true`) dan menyembunyikan identifier internal Cloudinary (`publicId`).
 
-### 2.1 Mendapatkan Daftar Paket
+### 2.1 Mendapatkan Daftar Paket Aktif
 
-Mengambil katalog paket dengan dukungan pencarian teks, filter kategori, status aktif, urutan, dan pagination.
+Mengambil katalog paket aktif dengan filter kategori, pencarian nama, sorting, dan pagination.
 
 - **Endpoint:** `GET /api/packages`
-- **Hak Akses:** Publik (Admin dapat menyertakan token untuk memfilter paket nonaktif)
-- **Headers:** `Authorization: Bearer <token>` *(opsional)*
+- **Hak Akses:** Publik
 
 #### Query Parameters
 | Parameter | Tipe | Default | Keterangan |
 |---|---|---|---|
 | `category` | String | - | Filter kategori: `dekor`, `catering`, atau `wedding` |
-| `search` | String | - | Pencarian nama atau deskripsi paket |
-| `isActive` | String | `true` | Untuk admin: `true`, `false`, atau `all`. Publik selalu `true` |
+| `q` | String | - | Pencarian nama paket (case-insensitive) |
 | `page` | Integer | `1` | Nomor halaman data |
-| `limit` | Integer | `10` | Jumlah data per halaman (maksimal 100) |
-| `sort` | String | `newest` | Urutan: `newest`, `oldest`, `cheapest`, `expensive`, `name_asc`, `name_desc` |
+| `limit` | Integer | `12` | Jumlah item per halaman (maksimal 50) |
+| `sort` | String | `terbaru` | Pilihan urutan: `terbaru`, `harga_asc`, `harga_desc` |
 
 #### Contoh Request
 ```http
-GET /api/packages?category=dekor&sort=cheapest&page=1&limit=10
+GET /api/packages?category=dekor&q=rustic&sort=harga_asc&page=1&limit=12
 ```
 
 #### Respons Berhasil (`200 OK`)
@@ -196,33 +194,37 @@ GET /api/packages?category=dekor&sort=cheapest&page=1&limit=10
   "success": true,
   "message": "Daftar paket berhasil diambil",
   "data": {
-    "packages": [
+    "items": [
       {
         "_id": "672e19c045de67ab89012345",
         "name": "Paket Dekor Rustic Gold",
+        "slug": "paket-dekor-rustic-gold",
         "category": "dekor",
         "price": 7500000,
-        "description": "Dekorasi panggung rustic modern elegan dengan bunga segar.",
-        "packageItems": [
-          "Backdrop 6x3m",
+        "description": "Dekorasi pelaminan rustic elegan dengan bunga segar.",
+        "inclusions": [
+          "Backdrop 6 meter",
           "Standing Flowers 4 pcs",
           "Mini Garden",
           "Karpet Panggung"
         ],
         "images": [
-          "https://res.cloudinary.com/kalila/image/upload/v1234/rustic-gold.jpg"
+          {
+            "_id": "672e19c045de67ab89012346",
+            "url": "https://res.cloudinary.com/kalila/image/upload/v1234/sample.jpg"
+          }
         ],
-        "decorWidth": 6,
+        "decorWidthCm": 600,
         "isActive": true,
-        "createdAt": "2026-11-08T14:00:00.000Z",
-        "updatedAt": "2026-11-08T14:00:00.000Z"
+        "createdAt": "2026-11-09T14:00:00.000Z",
+        "updatedAt": "2026-11-09T14:00:00.000Z"
       }
     ],
     "pagination": {
-      "total": 12,
       "page": 1,
-      "limit": 10,
-      "totalPages": 2
+      "limit": 12,
+      "total": 1,
+      "totalPages": 1
     }
   }
 }
@@ -230,16 +232,15 @@ GET /api/packages?category=dekor&sort=cheapest&page=1&limit=10
 
 ---
 
-### 2.2 Mendapatkan Detail Paket
+### 2.2 Mendapatkan Detail Paket Aktif via Slug
 
-Mengambil informasi rincian satu paket berdasarkan ID.
+Mengambil detail paket aktif berdasarkan slug URL yang unik.
 
-- **Endpoint:** `GET /api/packages/:id`
-- **Hak Akses:** Publik (Admin dapat melihat paket nonaktif)
-- **Headers:** `Authorization: Bearer <token>` *(opsional)*
+- **Endpoint:** `GET /api/packages/:slug`
+- **Hak Akses:** Publik
 
-#### Parameters
-- **Path Parameter:** `id` (MongoDB ObjectId dari paket)
+#### Path Parameters
+- `slug` (String): Slug unik paket (misal: `paket-dekor-rustic-gold`).
 
 #### Respons Berhasil (`200 OK`)
 ```json
@@ -250,95 +251,179 @@ Mengambil informasi rincian satu paket berdasarkan ID.
     "package": {
       "_id": "672e19c045de67ab89012345",
       "name": "Paket Dekor Rustic Gold",
+      "slug": "paket-dekor-rustic-gold",
       "category": "dekor",
       "price": 7500000,
-      "description": "Dekorasi panggung rustic modern elegan dengan bunga segar.",
-      "packageItems": [
-        "Backdrop 6x3m",
+      "description": "Dekorasi pelaminan rustic elegan dengan bunga segar.",
+      "inclusions": [
+        "Backdrop 6 meter",
         "Standing Flowers 4 pcs",
         "Mini Garden",
         "Karpet Panggung"
       ],
       "images": [
-        "https://res.cloudinary.com/kalila/image/upload/v1234/rustic-gold.jpg"
+        {
+          "_id": "672e19c045de67ab89012346",
+          "url": "https://res.cloudinary.com/kalila/image/upload/v1234/sample.jpg"
+        }
       ],
-      "decorWidth": 6,
+      "decorWidthCm": 600,
       "isActive": true,
-      "createdAt": "2026-11-08T14:00:00.000Z",
-      "updatedAt": "2026-11-08T14:00:00.000Z"
+      "createdAt": "2026-11-09T14:00:00.000Z",
+      "updatedAt": "2026-11-09T14:00:00.000Z"
     }
   }
 }
 ```
 
 #### Respons Gagal
-- `400 Bad Request`: Format ID MongoDB tidak valid.
-- `404 Not Found`: Paket tidak ditemukan atau sudah dinonaktifkan.
+- `404 Not Found`: Paket dengan slug tersebut tidak ditemukan atau berstatus tidak aktif.
 
 ---
 
-### 2.3 Membuat Paket Baru
+## 3. Modul Paket Layanan Admin (`/api/admin/packages`)
 
-Menambahkan paket layanan baru ke dalam sistem.
+Seluruh endpoint di bawah `/api/admin/packages` wajib menggunakan header autentikasi token admin (`authenticate` + `requireAdmin`).
 
-- **Endpoint:** `POST /api/packages`
+### 3.1 Mendapatkan Semua Paket (Admin)
+
+Mengambil seluruh paket (termasuk paket tidak aktif / draft) dengan filter lengkap.
+
+- **Endpoint:** `GET /api/admin/packages`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+#### Query Parameters
+| Parameter | Tipe | Default | Keterangan |
+|---|---|---|---|
+| `category` | String | - | Filter: `dekor`, `catering`, `wedding` |
+| `isActive` | String | - | Filter status: `true`, `false`, atau `all` |
+| `q` | String | - | Pencarian nama paket |
+| `page` | Integer | `1` | Nomor halaman |
+| `limit` | Integer | `12` | Jumlah item per halaman (maksimal 100) |
+| `sort` | String | `terbaru` | `terbaru`, `terlama`, `harga_asc`, `harga_desc` |
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Daftar semua paket berhasil diambil",
+  "data": {
+    "items": [
+      {
+        "_id": "672e19c045de67ab89012345",
+        "name": "Paket Dekor Rustic Gold",
+        "slug": "paket-dekor-rustic-gold",
+        "category": "dekor",
+        "price": 7500000,
+        "description": "Dekorasi pelaminan rustic elegan.",
+        "inclusions": ["Backdrop 6 meter"],
+        "images": [
+          {
+            "_id": "672e19c045de67ab89012346",
+            "url": "https://res.cloudinary.com/kalila/image/upload/v1234/sample.jpg",
+            "publicId": "kalila/packages/dekor/sample"
+          }
+        ],
+        "decorWidthCm": 600,
+        "isActive": true
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 12,
+      "total": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+
+---
+
+### 3.2 Mendapatkan Detail Paket via ID (Admin)
+
+- **Endpoint:** `GET /api/admin/packages/:id`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Detail paket berhasil diambil",
+  "data": {
+    "package": {
+      "_id": "672e19c045de67ab89012345",
+      "name": "Paket Dekor Rustic Gold",
+      "slug": "paket-dekor-rustic-gold",
+      "category": "dekor",
+      "price": 7500000,
+      "description": "Dekorasi pelaminan rustic elegan.",
+      "inclusions": ["Backdrop 6 meter"],
+      "images": [],
+      "decorWidthCm": 600,
+      "isActive": true
+    }
+  }
+}
+```
+
+---
+
+### 3.3 Membuat Paket Baru (Admin)
+
+Menambahkan paket baru ke database (gambar diunggah melalui endpoint terpisah).
+
+- **Endpoint:** `POST /api/admin/packages`
 - **Hak Akses:** Khusus Admin
 - **Headers:**
   - `Content-Type: application/json`
   - `Authorization: Bearer <admin_token>`
 
-#### Request Body
-| Field | Tipe | Wajib | Keterangan |
-|---|---|---|---|
-| `name` | String | Ya | Nama paket (min. 2 karakter) |
-| `category` | String | Ya | Salah satu dari: `dekor`, `catering`, `wedding` |
-| `price` | Number | Ya | Harga paket dalam Rupiah (>= 0) |
-| `description` | String | Tidak | Deskripsi lengkap mengenai paket |
-| `packageItems` | Array of String | Tidak | Rincian item yang didapat |
-| `images` | Array of String | Tidak | Daftar URL foto paket |
-| `decorWidth` | Number | **Khusus Dekor** | Lebar dekor (dalam meter) sebagai batas kanvas Self Design |
-| `cateringDetails` | Object | Tidak | Informasi tambahan catering (`minOrder`, `menuType`, `notes`) |
-| `weddingDetails` | Object | Tidak | Informasi tambahan wedding (`guestCapacity`, `includedServices`, `notes`) |
-| `isActive` | Boolean | Tidak | Status ketersediaan paket (default: `true`) |
+#### Aturan Bisnis & Validasi:
+- `category`: Enum `"dekor"` | `"catering"` | `"wedding"` (Wajib).
+- `name`: String (Wajib, trim). Slug otomatis dibuat dan dipastikan unik.
+- `price`: Integer >= 0 (Wajib).
+- `inclusions`: Array of String.
+- `decorWidthCm`:
+  - **WAJIB** diisi angka > 0 jika `category === "dekor"`.
+  - **TIDAK BOLEH** diisi untuk kategori selain `"dekor"`.
+- `isActive`: Boolean (opsional, default `true`).
 
-#### Contoh Request (Kategori Dekor)
+#### Contoh Body (Kategori Dekor)
 ```json
 {
-  "name": "Paket Dekor Rustic Gold",
+  "name": "Paket Dekor Modern Rustic",
   "category": "dekor",
   "price": 7500000,
-  "description": "Dekorasi pelaminan elegan bertema rustic modern.",
-  "packageItems": [
-    "Backdrop pelaminan 6x3m",
-    "Standing flower 4 buah",
-    "Mini garden panggung",
-    "Lighting set backdrop",
-    "Karpet jalan & panggung"
+  "description": "Dekorasi panggung 6 meter lengkap dengan pencahayaan dan bunga segar.",
+  "inclusions": [
+    "Backdrop 6 meter",
+    "Standing Flowers 4 pcs",
+    "Lighting Panggung",
+    "Karpet Jalan"
   ],
-  "decorWidth": 6,
-  "images": []
+  "decorWidthCm": 600,
+  "isActive": true
 }
 ```
 
-#### Contoh Request (Kategori Catering)
+#### Contoh Body (Kategori Catering)
 ```json
 {
-  "name": "Paket Buffet Nusantara Deluxe",
+  "name": "Paket Prasmanan Deluxe 500 Pax",
   "category": "catering",
-  "price": 65000,
-  "description": "Menu prasmanan lengkap masakan nusantara pilihan chef.",
-  "packageItems": [
+  "price": 35000000,
+  "description": "Menu prasmanan lengkap 5 hidangan utama pilihan koki.",
+  "inclusions": [
     "Nasi Putih",
     "Ayam Bakar Madu",
-    "Daging Sapi Rendang",
+    "Daging Rendang",
     "Sup Kimlo",
-    "Puding & Buah Segar"
+    "Aneka Buah & Puding"
   ],
-  "cateringDetails": {
-    "minOrder": 100,
-    "menuType": "Buffet Prasmanan",
-    "notes": "Termasuk alat makan dan staf servis"
-  }
+  "isActive": true
 }
 ```
 
@@ -350,49 +435,39 @@ Menambahkan paket layanan baru ke dalam sistem.
   "data": {
     "package": {
       "_id": "672e19c045de67ab89012345",
-      "name": "Paket Dekor Rustic Gold",
+      "name": "Paket Dekor Modern Rustic",
+      "slug": "paket-dekor-modern-rustic",
       "category": "dekor",
       "price": 7500000,
-      "description": "Dekorasi pelaminan elegan bertema rustic modern.",
-      "packageItems": [
-        "Backdrop pelaminan 6x3m",
-        "Standing flower 4 buah",
-        "Mini garden panggung"
-      ],
-      "decorWidth": 6,
+      "description": "Dekorasi panggung 6 meter lengkap.",
+      "inclusions": ["Backdrop 6 meter"],
       "images": [],
+      "decorWidthCm": 600,
       "isActive": true,
-      "createdAt": "2026-11-08T14:10:00.000Z",
-      "updatedAt": "2026-11-08T14:10:00.000Z"
+      "createdAt": "2026-11-09T14:10:00.000Z",
+      "updatedAt": "2026-11-09T14:10:00.000Z"
     }
   }
 }
 ```
 
-#### Respons Gagal
-- `400 Bad Request`: Data tidak valid (misal `category: "dekor"` tanpa mengisi `decorWidth`).
-- `401 Unauthorized`: Token tidak disediakan atau tidak valid.
-- `403 Forbidden`: Akun bukan admin.
-
 ---
 
-### 2.4 Memperbarui Paket
+### 3.4 Memperbarui Paket (Admin)
 
-Memperbarui informasi paket yang sudah ada.
-
-- **Endpoint:** `PUT /api/packages/:id`
+- **Endpoint:** `PUT /api/admin/packages/:id`
 - **Hak Akses:** Khusus Admin
 - **Headers:**
   - `Content-Type: application/json`
   - `Authorization: Bearer <admin_token>`
 
-#### Request Body
-Semua field bersifat opsional (mengikuti skema pembuatan paket).
+Jika field `name` diubah, slug akan otomatis dibuat ulang mengikuti nama baru.
 
+#### Request Body
 ```json
 {
-  "price": 8000000,
-  "description": "Dekorasi pelaminan elegan dengan pembaruan karpet bulu tebal."
+  "name": "Paket Dekor Modern Rustic Premium",
+  "price": 8500000
 }
 ```
 
@@ -404,13 +479,12 @@ Semua field bersifat opsional (mengikuti skema pembuatan paket).
   "data": {
     "package": {
       "_id": "672e19c045de67ab89012345",
-      "name": "Paket Dekor Rustic Gold",
+      "name": "Paket Dekor Modern Rustic Premium",
+      "slug": "paket-dekor-modern-rustic-premium",
       "category": "dekor",
-      "price": 8000000,
-      "description": "Dekorasi pelaminan elegan dengan pembaruan karpet bulu tebal.",
-      "decorWidth": 6,
-      "isActive": true,
-      "updatedAt": "2026-11-08T14:15:00.000Z"
+      "price": 8500000,
+      "decorWidthCm": 600,
+      "isActive": true
     }
   }
 }
@@ -418,70 +492,9 @@ Semua field bersifat opsional (mengikuti skema pembuatan paket).
 
 ---
 
-### 2.5 Menghapus / Menonaktifkan Paket
+### 3.5 Mengubah Status Aktif Paket (Admin)
 
-Secara default melakukan *soft delete* (mengubah `isActive: false`). Mendukung *permanent delete* jika parameter `permanent=true` dikirimkan.
-
-- **Endpoint:** `DELETE /api/packages/:id`
-- **Hak Akses:** Khusus Admin
-- **Headers:** `Authorization: Bearer <admin_token>`
-
-#### Query Parameters
-- `permanent` (boolean, opsional): `true` untuk menghapus dokumen secara permanen dari database. Default `false`.
-
-#### Respons Berhasil (`200 OK`)
-```json
-{
-  "success": true,
-  "message": "Paket berhasil dinonaktifkan"
-}
-```
-
----
-
-### 2.6 Mengunggah Foto ke Paket
-
-Mengunggah hingga 5 file gambar sekaligus ke dalam galeri paket. Jika kredensial Cloudinary tersedia di `.env`, gambar akan otomatis diunggah ke Cloudinary; jika tidak, gambar disimpan di penyimpanan lokal (`/uploads/packages/`).
-
-- **Endpoint:** `POST /api/packages/:id/images`
-- **Hak Akses:** Khusus Admin
-- **Headers:**
-  - `Content-Type: multipart/form-data`
-  - `Authorization: Bearer <admin_token>`
-- **Batasan:** Maksimal 5 file, ukuran per file maksimal 5 MB, tipe file diperbolehkan: `.jpg`, `.jpeg`, `.png`, `.webp`.
-
-#### Form Data
-- `images`: File gambar (dapat dikirim lebih dari 1 file dengan nama field `images`).
-
-#### Respons Berhasil (`201 Created`)
-```json
-{
-  "success": true,
-  "message": "Foto berhasil diunggah ke paket",
-  "data": {
-    "uploadedImages": [
-      "https://res.cloudinary.com/kalila/image/upload/v1234/kalila/packages/foto1.jpg",
-      "https://res.cloudinary.com/kalila/image/upload/v1234/kalila/packages/foto2.jpg"
-    ],
-    "package": {
-      "_id": "672e19c045de67ab89012345",
-      "name": "Paket Dekor Rustic Gold",
-      "images": [
-        "https://res.cloudinary.com/kalila/image/upload/v1234/kalila/packages/foto1.jpg",
-        "https://res.cloudinary.com/kalila/image/upload/v1234/kalila/packages/foto2.jpg"
-      ]
-    }
-  }
-}
-```
-
----
-
-### 2.7 Menghapus Foto dari Galeri Paket
-
-Menghapus salah satu URL foto dari daftar `images` pada paket.
-
-- **Endpoint:** `DELETE /api/packages/:id/images`
+- **Endpoint:** `PATCH /api/admin/packages/:id/status`
 - **Hak Akses:** Khusus Admin
 - **Headers:**
   - `Content-Type: application/json`
@@ -490,7 +503,7 @@ Menghapus salah satu URL foto dari daftar `images` pada paket.
 #### Request Body
 ```json
 {
-  "imageUrl": "https://res.cloudinary.com/kalila/image/upload/v1234/kalila/packages/foto1.jpg"
+  "isActive": false
 }
 ```
 
@@ -498,13 +511,12 @@ Menghapus salah satu URL foto dari daftar `images` pada paket.
 ```json
 {
   "success": true,
-  "message": "Foto berhasil dihapus dari paket",
+  "message": "Status paket berhasil diubah menjadi tidak aktif",
   "data": {
     "package": {
       "_id": "672e19c045de67ab89012345",
-      "images": [
-        "https://res.cloudinary.com/kalila/image/upload/v1234/kalila/packages/foto2.jpg"
-      ]
+      "name": "Paket Dekor Modern Rustic Premium",
+      "isActive": false
     }
   }
 }
@@ -512,27 +524,84 @@ Menghapus salah satu URL foto dari daftar `images` pada paket.
 
 ---
 
-### 2.8 Mengunggah Satu Gambar Independen
+### 3.6 Menghapus Paket & Seluruh Gambarnya (Admin)
 
-Endpoint pembantu bagi admin untuk mengunggah satu foto dan memperoleh URL-nya.
+Menghapus paket dari database dan menghapus semua aset gambarnya di Cloudinary.
 
-- **Endpoint:** `POST /api/packages/upload`
+- **Endpoint:** `DELETE /api/admin/packages/:id`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Paket beserta gambarnya berhasil dihapus"
+}
+```
+
+---
+
+### 3.7 Mengunggah Gambar ke Paket (Admin)
+
+Mengunggah 1 sampai 5 gambar sekaligus ke paket menggunakan Multer Memory Storage dan Cloudinary `upload_stream`. Gambar pertama yang diunggah akan otomatis berfungsi sebagai gambar sampul. Total gambar dalam satu paket maksimal 10 gambar.
+
+- **Endpoint:** `POST /api/admin/packages/:id/images`
 - **Hak Akses:** Khusus Admin
 - **Headers:**
   - `Content-Type: multipart/form-data`
   - `Authorization: Bearer <admin_token>`
+- **Batasan:**
+  - Field form-data bernama `images`.
+  - Format didukung: JPG, PNG, WEBP (divalidasi dengan pemeriksaan isi file / magic bytes).
+  - Ukuran file maksimal: 5 MB per file.
+  - Rate limited (maks. 30 request per 15 menit per IP).
 
-#### Form Data
-- `image`: 1 file gambar (maksimal 5 MB, JPG/PNG/WEBP).
-
-#### Respons Berhasil (`201 Created`)
+#### Respons Berhasil (`200 OK`)
 ```json
 {
   "success": true,
-  "message": "Foto berhasil diunggah",
+  "message": "Gambar berhasil diunggah ke paket",
   "data": {
-    "imageUrl": "https://res.cloudinary.com/kalila/image/upload/v1234/kalila/packages/foto-tunggal.jpg"
+    "package": {
+      "_id": "672e19c045de67ab89012345",
+      "name": "Paket Dekor Modern Rustic",
+      "images": [
+        {
+          "_id": "672e19c045de67ab89012346",
+          "url": "https://res.cloudinary.com/kalila/image/upload/v1234/kalila/packages/dekor/foto1.jpg",
+          "publicId": "kalila/packages/dekor/foto1"
+        }
+      ]
+    }
   }
 }
 ```
 
+#### Respons Gagal
+- `400 Bad Request`: File bukan gambar asli (magic bytes gagal), file melebihi 5 MB, lebih dari 5 file dalam satu request, atau total gambar melebihi batas 10 gambar per paket.
+
+---
+
+### 3.8 Menghapus Satu Gambar dari Paket (Admin)
+
+Menghapus subdokumen gambar berdasarkan `_id` gambar dan menghapus file fisiknya dari Cloudinary.
+
+- **Endpoint:** `DELETE /api/admin/packages/:id/images/:imageId`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Gambar berhasil dihapus dari paket",
+  "data": {
+    "package": {
+      "_id": "672e19c045de67ab89012345",
+      "name": "Paket Dekor Modern Rustic",
+      "images": []
+    }
+  }
+}
+```
