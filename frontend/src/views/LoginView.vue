@@ -270,11 +270,13 @@
 import { reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { authApi } from "../api/auth";
+import { useAuthStore } from "../stores/auth";
 import logoImg from "../assets/logo.png";
 import logoLoginImg from "../assets/logo-login.png";
 import bannerImg from "../assets/login-banner.jpg";
 
 const router = useRouter();
+const authStore = useAuthStore();
 
 const form = reactive({
   email: "",
@@ -302,6 +304,9 @@ const handleLogin = async () => {
 
   try {
     const res = await authApi.login(form.email, form.password);
+    if (res.data?.user && res.data?.token) {
+      authStore.setAuth(res.data.user, res.data.token);
+    }
 
     feedback.type = "success";
     feedback.message = res.message || "Login berhasil! Mengalihkan ke halaman...";
