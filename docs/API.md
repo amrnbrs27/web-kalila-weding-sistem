@@ -605,3 +605,349 @@ Menghapus subdokumen gambar berdasarkan `_id` gambar dan menghapus file fisiknya
   }
 }
 ```
+
+---
+
+## 4. Modul Pengaturan (Setting)
+
+Dokumen pengaturan bersifat *singleton* (`key: "main"`) yang menyimpan profil usaha, kontak, info rekening, batas pembayaran, dan kuota acara harian.
+
+### 4.1 Mengambil Pengaturan Publik
+
+Mengembalikan informasi bisnis, kontak, dan nominal DP untuk pengunjung/klien umum. Informasi perbankan dan QRIS **tidak** disertakan demi alasan keamanan.
+
+- **Endpoint:** `GET /api/settings`
+- **Hak Akses:** Publik
+- **Headers:** `Content-Type: application/json`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Pengaturan publik berhasil diambil",
+  "data": {
+    "businessName": "Kalila Wedding, Dekor & Catering",
+    "adminWhatsapp": "6281234567890",
+    "dpAmount": 1000000,
+    "paymentDeadlineHours": 24,
+    "kontak": {
+      "email": "kalila.official@gmail.com",
+      "phone": "081234567890",
+      "address": "Indonesia",
+      "instagram": "@kalila.organizer",
+      "facebook": "",
+      "tiktok": "@kalila.organizer"
+    }
+  }
+}
+```
+
+---
+
+### 4.2 Mengambil Pengaturan Lengkap (Admin)
+
+Mengembalikan konfigurasi lengkap sistem termasuk batas kuota acara harian, informasi rekening, dan URL gambar QRIS.
+
+- **Endpoint:** `GET /api/admin/settings`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Pengaturan admin berhasil diambil",
+  "data": {
+    "businessName": "Kalila Wedding, Dekor & Catering",
+    "adminWhatsapp": "6281234567890",
+    "dpAmount": 1000000,
+    "paymentDeadlineHours": 24,
+    "maxProofAttempts": 3,
+    "rejectionExtensionHours": 6,
+    "maxEventsPerDay": {
+      "dekor": 2,
+      "catering": 2,
+      "wedding": 1
+    },
+    "bankName": "Bank Central Asia (BCA)",
+    "accountNumber": "1234567890",
+    "accountHolder": "Kalila Wedding & Event",
+    "qrisImage": {
+      "url": "https://res.cloudinary.com/kalila/image/upload/v1234/kalila/settings/qris.png"
+    },
+    "kontak": {
+      "email": "kalila.official@gmail.com",
+      "phone": "081234567890",
+      "address": "Indonesia",
+      "instagram": "@kalila.organizer",
+      "facebook": "",
+      "tiktok": "@kalila.organizer"
+    },
+    "updatedAt": "2026-11-10T12:00:00.000Z"
+  }
+}
+```
+
+---
+
+### 4.3 Memperbarui Pengaturan (Admin)
+
+Menerima pembaruan parsial (*partial update*) terhadap pengaturan. Field bersarang (`kontak`, `maxEventsPerDay`) yang tidak disebutkan dalam request body tidak akan tertimpa. Field yang tidak dikenal akan ditolak (`400 Bad Request`).
+
+- **Endpoint:** `PUT /api/admin/settings`
+- **Hak Akses:** Khusus Admin
+- **Headers:**
+  - `Content-Type: application/json`
+  - `Authorization: Bearer <admin_token>`
+
+#### Request Body
+```json
+{
+  "businessName": "Kalila Wedding & Event Organizer",
+  "adminWhatsapp": "081234567890",
+  "dpAmount": 1000000,
+  "paymentDeadlineHours": 24,
+  "maxProofAttempts": 3,
+  "rejectionExtensionHours": 6,
+  "maxEventsPerDay": {
+    "dekor": 3,
+    "catering": null
+  },
+  "bankName": "Bank Mandiri",
+  "accountNumber": "9876543210",
+  "accountHolder": "Kalila Organizer",
+  "kontak": {
+    "email": "kontak@kalila.com"
+  }
+}
+```
+
+*Catatan:* `adminWhatsapp` otomatis dinormalisasi dari format `08...` atau `+628...` menjadi `628...`.
+
+#### Respons Berhasil (`200 OK`)
+Mengembalikan objek pengaturan admin yang telah diperbarui.
+
+---
+
+### 4.4 Unggah Gambar QRIS (Admin)
+
+Mengunggah satu gambar QRIS ke folder `kalila/settings` di Cloudinary. Jika sebelumnya sudah ada gambar QRIS, file lama di Cloudinary otomatis dihapus.
+
+- **Endpoint:** `POST /api/admin/settings/qris`
+- **Hak Akses:** Khusus Admin
+- **Headers:**
+  - `Content-Type: multipart/form-data`
+  - `Authorization: Bearer <admin_token>`
+- **Batasan:**
+  - Nama field form-data: `image`.
+  - Format didukung: JPG, PNG, WEBP (divalidasi magic bytes).
+  - Maksimal ukuran: 5 MB.
+  - Dilindungi *rate limiter*.
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Gambar QRIS berhasil diunggah",
+  "data": {
+    "url": "https://res.cloudinary.com/kalila/image/upload/v1234/kalila/settings/qris_new.png"
+  }
+}
+```
+
+---
+
+### 4.5 Menghapus Gambar QRIS (Admin)
+
+Menghapus file gambar QRIS dari Cloudinary dan mengosongkan URL gambar pada database.
+
+- **Endpoint:** `DELETE /api/admin/settings/qris`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Gambar QRIS berhasil dihapus"
+}
+```
+
+---
+
+## 5. Modul Kalender Blokir Admin (`/api/admin/calendar`)
+
+Digunakan oleh admin untuk memantau kalender bulanan dan memblokir tanggal acara per kategori.
+
+### 5.1 Mengambil Kalender Admin Bulanan
+
+Mengembalikan ringkasan setiap hari dalam satu bulan: status blokir (beserta alasan), jumlah acara aktif (booking `terkonfirmasi` dan `berlangsung`), serta ketersediaan.
+
+- **Endpoint:** `GET /api/admin/calendar`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query Parameters:**
+  - `month` (wajib): Format `YYYY-MM`.
+  - `category` (opsional): `"dekor"` | `"catering"` | `"wedding"`.
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Data kalender berhasil diambil",
+  "data": [
+    {
+      "date": "2027-01-15",
+      "isBlocked": true,
+      "blocks": [
+        {
+          "id": "672e25d045de67ab89012399",
+          "category": "dekor",
+          "reason": "Maintenance gudang properti"
+        }
+      ],
+      "effectiveEventCounts": {
+        "dekor": 1,
+        "catering": 0,
+        "wedding": 0
+      },
+      "rawEventCounts": {
+        "dekor": 1,
+        "catering": 0,
+        "wedding": 0
+      },
+      "availability": {
+        "dekor": { "status": "diblokir", "available": false },
+        "catering": { "status": "tersedia", "available": true },
+        "wedding": { "status": "diblokir", "available": false }
+      }
+    }
+  ]
+}
+```
+
+---
+
+### 5.2 Membuat Blokir Tanggal (Admin)
+
+Memblokir tanggal tunggal (`date`) atau rentang tanggal (`dateFrom` dan `dateTo`, maks. 31 hari).
+Operasi bersifat idempoten: jika suatu tanggal sudah diblokir, tanggal tersebut dilaporkan sebagai `skipped` tanpa membuat duplikasi ataupun menimbulkan error database.
+
+- **Endpoint:** `POST /api/admin/calendar/blocks`
+- **Hak Akses:** Khusus Admin
+- **Headers:**
+  - `Content-Type: application/json`
+  - `Authorization: Bearer <admin_token>`
+
+#### Request Body (Tanggal Tunggal)
+```json
+{
+  "category": "dekor",
+  "date": "2027-02-14",
+  "reason": "Acara internal vendor"
+}
+```
+
+#### Request Body (Rentang Tanggal)
+```json
+{
+  "category": "catering",
+  "dateFrom": "2027-02-10",
+  "dateTo": "2027-02-12",
+  "reason": "Renovasi dapur sentral"
+}
+```
+
+#### Respons Berhasil (`201 Created`)
+```json
+{
+  "success": true,
+  "message": "Proses pemblokiran kalender selesai",
+  "data": {
+    "created": [
+      {
+        "id": "672e26e045de67ab89012401",
+        "date": "2027-02-10",
+        "category": "catering",
+        "reason": "Renovasi dapur sentral"
+      }
+    ],
+    "skipped": [
+      {
+        "date": "2027-02-11",
+        "reason": "Sudah diblokir sebelumnya"
+      }
+    ]
+  }
+}
+```
+
+#### Respons Gagal
+- `400 Bad Request`: Tanggal di masa lalu, tanggal tidak valid kalender (mis. `2026-02-30`), atau rentang melebihi 31 hari.
+
+---
+
+### 5.3 Menghapus Blokir Tanggal (Admin)
+
+Membuka kembali tanggal yang sebelumnya diblokir.
+
+- **Endpoint:** `DELETE /api/admin/calendar/blocks/:id`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Blokir tanggal kalender berhasil dihapus"
+}
+```
+
+---
+
+## 6. Modul Ketersediaan Tanggal Publik (`/api/availability`)
+
+Digunakan pada frontend oleh pelanggan saat memilih tanggal di katalog paket atau formulir pemesanan.
+
+### 6.1 Mengambil Ketersediaan Tanggal Bulanan (Publik)
+
+Mengembalikan ketersediaan tiap tanggal dalam satu bulan untuk kategori yang dipilih (`dekor`, `catering`, atau `wedding`).
+
+- **Endpoint:** `GET /api/availability`
+- **Hak Akses:** Publik
+- **Query Parameters:**
+  - `category` (wajib): `"dekor"` | `"catering"` | `"wedding"`.
+  - `month` (wajib): Format `YYYY-MM` (maksimal 24 bulan ke depan dari bulan berjalan).
+
+#### Aturan Bisnis Ketersediaan:
+1. **Lewat:** Tanggal sebelum hari ini (WIB) berstatus `"lewat"` (`available: false`).
+2. **Diblokir:** Tanggal yang terdapat blokir admin berstatus `"diblokir"` (`available: false`). Untuk kategori `wedding`, tanggal dianggap diblokir bila salah satu dari `wedding`, `dekor`, atau `catering` diblokir.
+3. **Penuh:** Tanggal yang jumlah acara aktifnya mencapai `maxEventsPerDay[category]` berstatus `"penuh"` (`available: false`). Acara `wedding` memakan kuota 1 dekor dan 1 catering. Untuk kategori `wedding`, tanggal dianggap penuh bila kuota wedding, dekor, atau catering telah tercapai.
+4. **Tersedia:** Tanggal yang tidak lewat, tidak diblokir, dan belum penuh berstatus `"tersedia"` (`available: true`).
+5. **Slot Booking:** Pesanan berstatus `menunggu_dp` dan `menunggu_verifikasi` **tidak menahan slot**. Slot hanya dihitung saat pesanan berstatus `terkonfirmasi` atau `berlangsung`.
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Ketersediaan tanggal berhasil diambil",
+  "data": [
+    {
+      "date": "2027-01-01",
+      "status": "tersedia",
+      "available": true
+    },
+    {
+      "date": "2027-01-02",
+      "status": "diblokir",
+      "available": false
+    },
+    {
+      "date": "2027-01-03",
+      "status": "penuh",
+      "available": false
+    }
+  ]
+}
+```
+

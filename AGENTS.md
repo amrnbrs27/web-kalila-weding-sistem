@@ -51,7 +51,7 @@ Kecuali diminta lain, kerjakan hanya di folder yang disebut dalam tugas (umumnya
 6. Jangan menjalankan perintah destruktif (hapus data, `git reset --hard`, `git push --force`,
    menjatuhkan koleksi database) tanpa persetujuan eksplisit.
 7. Sebelum menambah dependency npm baru, pastikan benar-benar dibutuhkan dan sebutkan alasannya di laporan.
-
+8. Jangan menjalankan git add, git commit, atau git push kecuali diminta secara eksplisit dalam tugas.
 ## Konvensi Kode (Backend)
 
 - Bahasa pesan respons API dan komentar: **Bahasa Indonesia**. Nama variabel, fungsi, dan field: Inggris.

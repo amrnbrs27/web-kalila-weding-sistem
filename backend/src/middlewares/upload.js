@@ -124,8 +124,46 @@ const uploadRateLimiter = rateLimit({
   },
 });
 
+/**
+ * Middleware untuk upload satu gambar (field: fieldName, default 'image')
+ * Memeriksa ukuran file (maks 5 MB) dan magic bytes isi file
+ */
+const uploadSingleImageMiddleware = (fieldName = 'image') => {
+  return (req, res, next) => {
+    upload.single(fieldName)(req, res, (err) => {
+      if (err) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return next(new AppError('Ukuran file maksimal 5 MB', 400));
+        }
+        if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+          return next(new AppError(`Field unggah tidak sesuai (gunakan field: ${fieldName})`, 400));
+        }
+        return next(err);
+      }
+
+      if (!req.file) {
+        return next(new AppError(`Silakan pilih file gambar untuk diunggah (field: ${fieldName})`, 400));
+      }
+
+      // Validasi magic bytes
+      const detected = detectImageMimeType(req.file.buffer);
+      if (!detected) {
+        return next(
+          new AppError(
+            `File "${req.file.originalname}" bukan gambar yang valid (isi file tidak sesuai format JPG, PNG, atau WEBP)`,
+            400
+          )
+        );
+      }
+
+      next();
+    });
+  };
+};
+
 module.exports = {
   uploadPackageImagesMiddleware,
+  uploadSingleImageMiddleware,
   uploadRateLimiter,
   detectImageMimeType,
 };
