@@ -3,6 +3,9 @@
     class="min-h-screen flex flex-col font-sans overflow-x-hidden transition-colors duration-300"
     :style="{ backgroundColor: isAuthRoute ? '#F7F5E8' : 'transparent' }"
   >
+    <!-- Global Floating Toast Notification Container -->
+    <ToastContainer />
+
     <router-view v-slot="{ Component, route }">
       <transition :name="transitionName" mode="out-in">
         <component :is="Component" :key="route.path" />
@@ -14,6 +17,7 @@
 <script setup>
 import { ref, computed, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
+import ToastContainer from "./components/common/ToastContainer.vue";
 
 const router = useRouter();
 const route = useRoute();

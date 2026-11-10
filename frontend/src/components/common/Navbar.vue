@@ -361,10 +361,12 @@
 import { ref, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../../stores/auth";
+import { useToastStore } from "../../stores/toast";
 import logoImg from "../../assets/logo.png";
 
 const router = useRouter();
 const authStore = useAuthStore();
+const toast = useToastStore();
 
 const isScrolled = ref(false);
 const portfolioOpen = ref(false);
@@ -389,13 +391,17 @@ const closeAllDropdowns = () => {
 
 const handleLogout = () => {
   profileDropdownOpen.value = false;
+  const name = authStore.userName;
   authStore.logout();
+  toast.showInfo("Logout Berhasil", `Sampai jumpa kembali, ${name}.`);
   router.push("/");
 };
 
 const handleMobileLogout = () => {
   mobileMenuOpen.value = false;
+  const name = authStore.userName;
   authStore.logout();
+  toast.showInfo("Logout Berhasil", `Sampai jumpa kembali, ${name}.`);
   router.push("/");
 };
 

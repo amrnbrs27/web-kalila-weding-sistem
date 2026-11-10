@@ -364,12 +364,14 @@ import { reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { authApi } from "../api/auth";
 import { useAuthStore } from "../stores/auth";
+import { useToastStore } from "../stores/toast";
 import logoImg from "../assets/logo.png";
 import logoLoginImg from "../assets/logo-login.png";
 import bannerImg from "../assets/login-banner.jpg";
 
 const router = useRouter();
 const authStore = useAuthStore();
+const toast = useToastStore();
 
 const form = reactive({
   name: "",
@@ -432,16 +434,24 @@ const handleRegister = async () => {
     feedback.type = "success";
     feedback.message = res.message || "Akun berhasil dibuat! Mengalihkan ke halaman Login...";
 
+    toast.showSuccess(
+      "Pendaftaran Berhasil!",
+      "Akun Anda telah dibuat. Silakan login ke akun Anda."
+    );
+
     setTimeout(() => {
       router.push("/login");
-    }, 1200);
+    }, 900);
   } catch (err) {
-    feedback.type = "error";
-    feedback.message =
+    const errMsg =
       err?.response?.data?.message ||
       err?.response?.data?.errors?.[0]?.message ||
       err?.message ||
       "Terjadi kesalahan saat pendaftaran. Silakan coba lagi.";
+
+    feedback.type = "error";
+    feedback.message = errMsg;
+    toast.showError("Pendaftaran Gagal", errMsg);
   } finally {
     isLoading.value = false;
   }

@@ -271,12 +271,14 @@ import { reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { authApi } from "../api/auth";
 import { useAuthStore } from "../stores/auth";
+import { useToastStore } from "../stores/toast";
 import logoImg from "../assets/logo.png";
 import logoLoginImg from "../assets/logo-login.png";
 import bannerImg from "../assets/login-banner.jpg";
 
 const router = useRouter();
 const authStore = useAuthStore();
+const toast = useToastStore();
 
 const form = reactive({
   email: "",
@@ -311,16 +313,24 @@ const handleLogin = async () => {
     feedback.type = "success";
     feedback.message = res.message || "Login berhasil! Mengalihkan ke halaman...";
 
+    toast.showSuccess(
+      "Login Berhasil!",
+      `Selamat datang kembali, ${res.data?.user?.name || "Client"}!`
+    );
+
     setTimeout(() => {
       router.push("/");
-    }, 800);
+    }, 600);
   } catch (err) {
-    feedback.type = "error";
-    feedback.message =
+    const errMsg =
       err?.response?.data?.message ||
       err?.response?.data?.errors?.[0]?.message ||
       err?.message ||
       "Email atau password salah. Silakan periksa kembali.";
+
+    feedback.type = "error";
+    feedback.message = errMsg;
+    toast.showError("Login Gagal", errMsg);
   } finally {
     isLoading.value = false;
   }
