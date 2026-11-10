@@ -43,6 +43,11 @@ const routes = [
     component: () => import("../views/ContactView.vue"),
   },
   {
+    path: "/progress",
+    name: "progress",
+    component: () => import("../views/ProgressView.vue"),
+  },
+  {
     path: "/login",
     name: "login",
     component: () => import("../views/LoginView.vue"),
