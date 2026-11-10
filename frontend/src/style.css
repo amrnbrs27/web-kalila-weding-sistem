@@ -13,6 +13,10 @@
   --color-burgundy-500: #A82438;
   --color-burgundy-600: #8B1E2F;
   --color-burgundy-700: #711624;
+  --color-kalila-red: #700B11;
+  --color-kalila-cream: #F7F5E8;
+  --color-kalila-charcoal: #22272B;
+  --color-kalila-gold: #B5965A;
   
   --color-dark-950: #070708;
   --color-dark-900: #0B0B0C;
@@ -49,3 +53,133 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #C5A265;
 }
+
+/* ============================================================
+   ROUTER PAGE TRANSITIONS (LOGIN <-> REGISTER & AUTH PAGES)
+   ============================================================ */
+
+/* 1. Navigate from Login -> Register:
+   Login moves out to left, Register enters from right */
+.auth-to-register-enter-active {
+  transition: opacity 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+              filter 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform, filter;
+}
+
+.auth-to-register-leave-active {
+  transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+              filter 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity, transform, filter;
+}
+
+.auth-to-register-enter-from {
+  opacity: 0;
+  transform: translateX(45px) scale(0.985);
+  filter: blur(4px);
+}
+
+.auth-to-register-enter-to {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  filter: blur(0);
+}
+
+.auth-to-register-leave-from {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  filter: blur(0);
+}
+
+.auth-to-register-leave-to {
+  opacity: 0;
+  transform: translateX(-45px) scale(0.985);
+  filter: blur(4px);
+}
+
+
+/* 2. Navigate from Register -> Login:
+   Register moves out to right, Login enters from left */
+.auth-to-login-enter-active {
+  transition: opacity 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+              filter 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform, filter;
+}
+
+.auth-to-login-leave-active {
+  transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+              filter 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity, transform, filter;
+}
+
+.auth-to-login-enter-from {
+  opacity: 0;
+  transform: translateX(-45px) scale(0.985);
+  filter: blur(4px);
+}
+
+.auth-to-login-enter-to {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  filter: blur(0);
+}
+
+.auth-to-login-leave-from {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  filter: blur(0);
+}
+
+.auth-to-login-leave-to {
+  opacity: 0;
+  transform: translateX(45px) scale(0.985);
+  filter: blur(4px);
+}
+
+
+/* 3. Auth Page Initial Enter / Exit (from other non-auth pages) */
+.auth-fade-enter-active {
+  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.auth-fade-leave-active {
+  transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.auth-fade-enter-from {
+  opacity: 0;
+  transform: translateY(16px);
+}
+
+.auth-fade-enter-to {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.auth-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.auth-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-16px);
+}
+
+
+/* 4. Default gentle fade for other routes */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.22s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
