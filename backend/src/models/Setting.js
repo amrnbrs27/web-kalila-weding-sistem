@@ -120,13 +120,13 @@ const settingSchema = new mongoose.Schema(
 /**
  * Helper static untuk mendapatkan dokumen settings singleton
  */
-settingSchema.statics.getSettings = async function () {
-  let settings = await this.findOne({ key: 'main' });
+settingSchema.statics.getSettings = async function (options = {}) {
+  let settings = await this.findOne({ key: 'main' }, null, options);
   if (!settings) {
     settings = await this.findOneAndUpdate(
       { key: 'main' },
       { $setOnInsert: { key: 'main' } },
-      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true, ...options }
     );
   }
   return settings;

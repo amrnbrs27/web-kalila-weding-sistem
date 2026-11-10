@@ -11,6 +11,8 @@ const User = require('../src/models/User');
 const Package = require('../src/models/Package');
 const CalendarBlock = require('../src/models/CalendarBlock');
 const Booking = require('../src/models/Booking');
+const Payment = require('../src/models/Payment');
+const SlotLock = require('../src/models/SlotLock');
 const Setting = require('../src/models/Setting');
 const cloudinary = require('../src/config/cloudinary');
 
@@ -20,6 +22,8 @@ const tracked = {
   packages: new Set(),
   calendarBlocks: new Set(),
   bookings: new Set(),
+  payments: new Set(),
+  slotLocks: new Set(),
   cloudinaryPublicIds: new Set(),
 };
 
@@ -109,6 +113,12 @@ function trackCalendarBlock(id) {
 }
 function trackBooking(id) {
   if (id) tracked.bookings.add(id.toString());
+}
+function trackPayment(id) {
+  if (id) tracked.payments.add(id.toString());
+}
+function trackSlotLock(id) {
+  if (id) tracked.slotLocks.add(id.toString());
 }
 function trackCloudinaryPublicId(publicId) {
   if (publicId) tracked.cloudinaryPublicIds.add(publicId);
@@ -233,6 +243,19 @@ async function cleanTrackedData() {
   if (tracked.bookings.size > 0) {
     await Booking.deleteMany({ _id: { $in: Array.from(tracked.bookings) } });
   }
+  if (tracked.payments.size > 0) {
+    await Payment.deleteMany({ _id: { $in: Array.from(tracked.payments) } });
+  }
+  if (tracked.slotLocks.size > 0) {
+    const list = Array.from(tracked.slotLocks);
+    const validObjectIds = list.filter((id) => mongoose.Types.ObjectId.isValid(id));
+    await SlotLock.deleteMany({
+      $or: [
+        { date: { $in: list } },
+        ...(validObjectIds.length > 0 ? [{ _id: { $in: validObjectIds } }] : []),
+      ],
+    });
+  }
 
   // Bersihkan aset Cloudinary yang terlacak
   if (tracked.cloudinaryPublicIds.size > 0) {
@@ -258,6 +281,8 @@ module.exports = {
   trackPackage,
   trackCalendarBlock,
   trackBooking,
+  trackPayment,
+  trackSlotLock,
   trackCloudinaryPublicId,
   createTestAdmin,
   createTestCustomer,

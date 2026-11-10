@@ -45,7 +45,7 @@ async function getMonthRawData(monthStr, { session } = {}) {
     : await Booking.aggregate(bookingAgg);
 
   // Ambil pengaturan batas maksimal acara
-  const settings = await Setting.getSettings();
+  const settings = await Setting.getSettings(session ? { session } : {});
   const maxEvents = {
     dekor: settings.maxEventsPerDay?.dekor ?? null,
     catering: settings.maxEventsPerDay?.catering ?? null,
@@ -284,7 +284,7 @@ async function isDateAvailable(category, dateStr, { session } = {}) {
     rawCounts[item._id] = item.count;
   }
 
-  const settings = await Setting.getSettings();
+  const settings = await Setting.getSettings(session ? { session } : {});
   const maxEvents = {
     dekor: settings.maxEventsPerDay?.dekor ?? null,
     catering: settings.maxEventsPerDay?.catering ?? null,

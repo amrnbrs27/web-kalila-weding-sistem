@@ -951,3 +951,358 @@ Mengembalikan ketersediaan tiap tanggal dalam satu bulan untuk kategori yang dip
 }
 ```
 
+---
+
+## 7. Modul Pemesanan Pelanggan (`/api/bookings`)
+
+Modul ini digunakan oleh pelanggan terdaftar untuk membuat pemesanan layanan, melihat riwayat pemesanan miliknya, dan melihat detail pemesanan.
+
+### 7.1 Membuat Pesanan Baru (Pelanggan)
+
+Membuat booking baru oleh pelanggan. Status awal pesanan adalah `menunggu_dp` dengan status pembayaran `belum_dp`.
+Pesanan pada status ini **belum menahan slot tanggal** sebelum pembayaran DP disetujui.
+
+- **Endpoint:** `POST /api/bookings`
+- **Hak Akses:** Pelanggan Terautentikasi (`customer` role)
+- **Headers:** `Authorization: Bearer <customer_token>`, `Content-Type: application/json`
+- **Rate Limit:** 10 permintaan per 15 menit per IP.
+
+#### Request Body
+| Field | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `packageId` | String | Ya | ID paket MongoDB yang valid dan aktif |
+| `eventDate` | String | Ya | Format `YYYY-MM-DD` (tidak boleh tanggal lewat, diblokir, atau penuh) |
+| `eventName` | String | Ya | Nama acara (3 - 120 karakter) |
+| `location` | String | Ya | Alamat / lokasi acara (3 - 300 karakter) |
+| `contactName` | String | Tidak | Nama kontak alternatif (default nama akun) |
+| `contactPhone` | String | Tidak | Nomor WA kontak (dinormalisasi ke format `628...`) |
+| `contactEmail` | String | Tidak | Email kontak alternatif |
+| `guestCount` | Number | Kondisional | Wajib untuk kategori `catering` dan `wedding` (integer >= 1) |
+| `notes` | String | Tidak | Catatan tambahan (maks 1000 karakter) |
+| `formData` | Object | Tidak | Data kustom per kategori (Zod strict) |
+
+##### Ketentuan `formData`:
+- `dekor`: `{ themeColor?, customRequest? }`
+- `catering`: `{ menuSelection?, dietaryRestrictions?, serviceType? }` (`serviceType`: `'buffet' \| 'box' \| 'stall' \| 'custom'`)
+- `wedding`: `{ brideName?, groomName?, venueType? }` (`venueType`: `'indoor' \| 'outdoor' \| 'semi-outdoor'`)
+
+```json
+{
+  "packageId": "672e12ab34cd56ef78905678",
+  "eventDate": "2027-02-14",
+  "eventName": "Akad & Resepsi Pernikahan",
+  "location": "Gedung Serbaguna Kalila, Jakarta",
+  "guestCount": 300,
+  "notes": "Harap sediakan karpet merah di lorong utama",
+  "formData": {
+    "brideName": "Siti Nurhaliza",
+    "groomName": "Ahmad Dani",
+    "venueType": "indoor"
+  }
+}
+```
+
+#### Respons Berhasil (`201 Created`)
+```json
+{
+  "success": true,
+  "message": "Pesanan berhasil dibuat. Silakan lakukan pembayaran DP sebelum batas waktu.",
+  "data": {
+    "_id": "673012ab34cd56ef78909999",
+    "bookingNumber": "KL20270214-A8K2",
+    "status": "menunggu_dp",
+    "paymentStatus": "belum_dp",
+    "eventDate": "2027-02-14",
+    "eventName": "Akad & Resepsi Pernikahan",
+    "location": "Gedung Serbaguna Kalila, Jakarta",
+    "category": "wedding",
+    "guestCount": 300,
+    "dpAmount": 1000000,
+    "packageSnapshot": {
+      "name": "Paket Wedding Ruby Luxury",
+      "price": 45000000,
+      "category": "wedding"
+    },
+    "expiresAt": "2026-11-12T02:00:00.000Z",
+    "createdAt": "2026-11-11T02:00:00.000Z"
+  }
+}
+```
+
+#### Respons Gagal
+- `400 Bad Request`: Format tidak valid, tanggal lampau, kategori catering/wedding tanpa guestCount, atau key formData asing.
+- `401 Unauthorized`: Token tidak disertakan atau tidak valid.
+- `403 Forbidden`: Pengguna memiliki role `admin`.
+- `404 Not Found`: Paket tidak ditemukan atau nonaktif.
+- `409 Conflict`: Tanggal sudah penuh/diblokir, atau pemesan sudah memiliki pesanan aktif untuk paket dan tanggal yang sama.
+
+---
+
+### 7.2 Daftar Riwayat Pesanan Saya (Pelanggan)
+
+Mengambil daftar pesanan milik pelanggan yang sedang login. Data sensitif admin (seperti `refundNote` dan detail admin di `statusHistory`) otomatis disanitasi.
+
+- **Endpoint:** `GET /api/bookings/me`
+- **Hak Akses:** Pelanggan Terautentikasi
+- **Headers:** `Authorization: Bearer <customer_token>`
+- **Query Parameters:**
+  - `status` (opsional): Filter status (`menunggu_dp`, `menunggu_verifikasi`, `terkonfirmasi`, `berlangsung`, `selesai`, `dibatalkan`).
+  - `page` (opsional, default 1): Halaman data.
+  - `limit` (opsional, default 10, maks 50): Jumlah item per halaman.
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Daftar pesanan berhasil diambil",
+  "data": {
+    "items": [
+      {
+        "_id": "673012ab34cd56ef78909999",
+        "bookingNumber": "KL20270214-A8K2",
+        "category": "wedding",
+        "eventDate": "2027-02-14",
+        "eventName": "Akad & Resepsi Pernikahan",
+        "location": "Gedung Serbaguna Kalila, Jakarta",
+        "status": "menunggu_dp",
+        "paymentStatus": "belum_dp",
+        "dpAmount": 1000000,
+        "packageSnapshot": {
+          "name": "Paket Wedding Ruby Luxury",
+          "price": 45000000,
+          "category": "wedding"
+        },
+        "expiresAt": "2026-11-12T02:00:00.000Z",
+        "createdAt": "2026-11-11T02:00:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 10,
+      "total": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+
+---
+
+### 7.3 Detail Pesanan Saya (Pelanggan)
+
+Mengambil detail lengkap satu pesanan milik pelanggan yang sedang login.
+
+- **Endpoint:** `GET /api/bookings/:id`
+- **Hak Akses:** Pelanggan Terautentikasi (khusus pemilik pesanan)
+- **Headers:** `Authorization: Bearer <customer_token>`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Detail pesanan berhasil diambil",
+  "data": {
+    "_id": "673012ab34cd56ef78909999",
+    "bookingNumber": "KL20270214-A8K2",
+    "category": "wedding",
+    "eventDate": "2027-02-14",
+    "eventName": "Akad & Resepsi Pernikahan",
+    "location": "Gedung Serbaguna Kalila, Jakarta",
+    "status": "menunggu_dp",
+    "paymentStatus": "belum_dp",
+    "dpAmount": 1000000,
+    "packageSnapshot": {
+      "name": "Paket Wedding Ruby Luxury",
+      "price": 45000000,
+      "category": "wedding"
+    },
+    "guestCount": 300,
+    "formData": {
+      "brideName": "Siti Nurhaliza",
+      "groomName": "Ahmad Dani",
+      "venueType": "indoor"
+    },
+    "statusHistory": [
+      {
+        "status": "menunggu_dp",
+        "at": "2026-11-11T02:00:00.000Z",
+        "note": "Pesanan dibuat oleh pelanggan"
+      }
+    ],
+    "expiresAt": "2026-11-12T02:00:00.000Z",
+    "createdAt": "2026-11-11T02:00:00.000Z"
+  }
+}
+```
+
+#### Respons Gagal
+- `404 Not Found`: Pesanan tidak ditemukan atau milik pelanggan lain (akses dicegah).
+
+---
+
+## 8. Modul Manajemen Pesanan Admin (`/api/admin/bookings`)
+
+Modul ini digunakan oleh admin untuk mengelola semua pesanan, membuat pesanan manual/offline, memperbarui status pesanan, dan mencatat pelunasan pembayaran.
+
+### 8.1 Daftar Pesanan (Admin)
+
+Mengambil seluruh daftar pesanan dengan filter fleksibel, pencarian aman, dan pengurutan.
+
+- **Endpoint:** `GET /api/admin/bookings`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query Parameters:**
+  - `category` (opsional): Filter kategori (`dekor`, `catering`, `wedding`).
+  - `status` (opsional): Filter status pesanan.
+  - `paymentStatus` (opsional): Filter status pembayaran.
+  - `source` (opsional): `website` atau `manual`.
+  - `dateFrom` & `dateTo` (opsional): Rentang tanggal acara `YYYY-MM-DD`.
+  - `q` (opsional): Pencarian teks bebas (nomor booking, nama acara, nama pelanggan, no telepon pelanggan; aman dari regex injection).
+  - `sort` (opsional, default `terbaru`): `terbaru`, `terlama`, `tanggal_acara_asc`, `tanggal_acara_desc`.
+  - `page` (opsional, default 1) & `limit` (opsional, default 10, maks 100).
+
+---
+
+### 8.2 Detail Lengkap Pesanan (Admin)
+
+Mengambil data pesanan secara utuh, termasuk data pelanggan, riwayat status, dan seluruh riwayat pembayaran (`Payment`).
+
+- **Endpoint:** `GET /api/admin/bookings/:id`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+---
+
+### 8.3 Pembaruan Status Pesanan (Admin)
+
+Memperbarui status operasional pesanan berdasarkan aturan transisi status yang ketat. Dilakukan secara atomik dengan proteksi konflik konkuren.
+
+- **Endpoint:** `PATCH /api/admin/bookings/:id/status`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`, `Content-Type: application/json`
+
+#### Aturan Transisi Status yang Diizinkan:
+- `menunggu_dp` -> `dibatalkan`
+- `menunggu_verifikasi` -> `dibatalkan`
+- `terkonfirmasi` -> `berlangsung` atau `dibatalkan`
+- `berlangsung` -> `selesai` atau `dibatalkan`
+- *Catatan:* Transisi `menunggu_dp`/`menunggu_verifikasi` -> `terkonfirmasi` HANYA dapat dilakukan melalui verifikasi pembayaran DP atau pembuatan pesanan manual dengan `dpPaid: true`.
+
+#### Request Body
+| Field | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `status` | String | Ya | Status tujuan yang valid |
+| `reason` | String | Kondisional | Wajib jika status tujuan adalah `dibatalkan` (minimal 5 karakter) |
+| `refundNote` | String | Tidak | Catatan pengembalian dana manual jika dibatalkan setelah DP dibayar |
+
+```json
+{
+  "status": "berlangsung"
+}
+```
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Status pesanan berhasil diubah menjadi berlangsung",
+  "data": { ... }
+}
+```
+
+#### Respons Gagal
+- `400 Bad Request`: Transisi status tidak diizinkan, atau pembatalan tanpa alasan (`reason`).
+- `409 Conflict`: Status pesanan telah diubah bersamaan oleh admin lain.
+
+---
+
+### 8.4 Pembuatan Pesanan Manual / Offline (Admin)
+
+Digunakan admin untuk mencatat pesanan yang datang via WhatsApp, telepon, atau langsung ke kantor.
+
+- **Endpoint:** `POST /api/admin/bookings/manual`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`, `Content-Type: application/json`
+
+#### Opsi Pembayaran DP (`dpPaid`):
+1. **`dpPaid: false`**: Pesanan disimpan dengan status `menunggu_dp` dan `paymentStatus: belum_dp`. Tidak mengunci slot tanggal. Pelanggan dapat membayar lewat transfer/QRIS dalam batas waktu.
+2. **`dpPaid: true`**: Dijalankan di dalam MongoDB Transaction dengan **SlotLock**. Mengunci slot tanggal secara atomik. Jika kuota penuh atau diblokir, transaksi di-rollback dan mengembalikan `409 Conflict`. Jika berhasil, status langsung `terkonfirmasi`, `paymentStatus: dp_dibayar`, dan record `Payment` approved langsung dibuat otomatis.
+
+#### Fitur Khusus Catering Custom:
+Admin dapat membuat pesanan catering tanpa `packageId` dengan menentukan nama dan estimasi harga manual pada `packageSnapshot`. Untuk kategori `dekor` dan `wedding`, wajib memilih paket aktif yang terdaftar.
+
+#### Request Body Contoh (dpPaid = true):
+```json
+{
+  "customer": {
+    "name": "Bapak Irwan Santoso",
+    "phone": "081234567890",
+    "email": "irwan@example.com"
+  },
+  "packageId": "672e12ab34cd56ef78905678",
+  "eventDate": "2027-03-20",
+  "eventName": "Resepsi Pernikahan Irwan & Maya",
+  "location": "Hotel Grand Kalila Ballroom",
+  "guestCount": 500,
+  "dpPaid": true,
+  "dpMethod": "transfer",
+  "dpNote": "DP ditransfer ke rekening BCA Kalila"
+}
+```
+
+---
+
+### 8.5 Pencatatan Pelunasan Pembayaran (Admin)
+
+Mencatat pelunasan sisa pembayaran setelah DP terbayar (biasanya dilakukan sebelum atau sesudah acara selesai).
+
+- **Endpoint:** `PATCH /api/admin/bookings/:id/settlement`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`, `Content-Type: application/json`
+
+#### Syarat Pencatatan:
+- Pesanan harus memiliki `paymentStatus: 'dp_dibayar'`.
+- Status operasional pesanan harus `terkonfirmasi`, `berlangsung`, atau `selesai`.
+- Idempoten: Pesanan yang sudah `lunas` akan ditolak dengan `409 Conflict`.
+
+#### Request Body
+| Field | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `amount` | Number | Ya | Nominal pelunasan (integer >= 0) |
+| `method` | String | Ya | `"transfer"` \| `"qris"` \| `"tunai"` \| `"lainnya"` |
+| `paidAt` | String / Date | Tidak | Tanggal & waktu pembayaran (default waktu saat ini) |
+| `note` | String | Tidak | Catatan pelunasan |
+
+```json
+{
+  "amount": 44000000,
+  "method": "transfer",
+  "note": "Pelunasan via transfer bank Mandiri"
+}
+```
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Pelunasan pesanan berhasil dicatat",
+  "data": {
+    "booking": {
+      "_id": "673012ab34cd56ef78909999",
+      "paymentStatus": "lunas",
+      ...
+    },
+    "payment": {
+      "_id": "673012ab34cd56ef78908888",
+      "type": "pelunasan",
+      "amount": 44000000,
+      "method": "transfer",
+      "status": "approved",
+      "source": "manual",
+      ...
+    }
+  }
+}
+```
+
+

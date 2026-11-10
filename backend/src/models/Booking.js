@@ -2,6 +2,18 @@ const mongoose = require('mongoose');
 const crypto = require('crypto');
 const { isValidDate, getTodayWIB } = require('../utils/dateUtils');
 
+// Alfabet aman tanpa karakter ambigu (tanpa 0, O, 1, I)
+const SAFE_BOOKING_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+function generateRandomSuffix(length = 4) {
+  let result = '';
+  const bytes = crypto.randomBytes(length);
+  for (let i = 0; i < length; i++) {
+    result += SAFE_BOOKING_ALPHABET[bytes[i] % SAFE_BOOKING_ALPHABET.length];
+  }
+  return result;
+}
+
 const bookingSchema = new mongoose.Schema(
   {
     bookingNumber: {
@@ -27,25 +39,25 @@ const bookingSchema = new mongoose.Schema(
       },
       email: {
         type: String,
-        required: [true, 'Email pelanggan wajib diisi'],
         trim: true,
+        default: '',
       },
     },
     package: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Package',
-      required: [true, 'Paket wajib dipilih'],
+      default: null, // Opsional untuk pesanan manual catering custom
     },
     packageSnapshot: {
       name: {
         type: String,
-        required: true,
+        required: [true, 'Nama paket wajib diisi'],
         trim: true,
       },
       price: {
         type: Number,
-        required: true,
         min: 0,
+        default: null, // Boleh null/kosong untuk pesanan catering custom
       },
       category: {
         type: String,
@@ -81,7 +93,7 @@ const bookingSchema = new mongoose.Schema(
     },
     guestCount: {
       type: Number,
-      min: [0, 'Jumlah tamu tidak boleh negatif'],
+      min: [1, 'Jumlah tamu minimal 1'],
       default: null,
     },
     notes: {
@@ -114,6 +126,12 @@ const bookingSchema = new mongoose.Schema(
       type: String,
       enum: ['belum_dp', 'menunggu_verifikasi', 'dp_dibayar', 'ditolak', 'lunas'],
       default: 'belum_dp',
+    },
+    dpAmount: {
+      type: Number,
+      required: [true, 'Nominal DP wajib dicatat'],
+      min: [0, 'Nominal DP tidak boleh negatif'],
+      default: 1000000,
     },
     expiresAt: {
       type: Date,
@@ -164,7 +182,7 @@ bookingSchema.pre('save', async function () {
 
     while (!unique && attempts < 10) {
       attempts++;
-      const randomSuffix = crypto.randomBytes(3).toString('hex').slice(0, 4).toUpperCase();
+      const randomSuffix = generateRandomSuffix(4);
       const candidate = `KLA-${dateFormatted}-${randomSuffix}`;
       const existing = await this.constructor.findOne({ bookingNumber: candidate });
       if (!existing) {
@@ -180,4 +198,5 @@ bookingSchema.pre('save', async function () {
 });
 
 module.exports = mongoose.model('Booking', bookingSchema);
-
+module.exports.SAFE_BOOKING_ALPHABET = SAFE_BOOKING_ALPHABET;
+module.exports.generateRandomSuffix = generateRandomSuffix;

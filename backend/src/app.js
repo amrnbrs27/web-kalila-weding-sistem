@@ -25,6 +25,8 @@ app.use('/api/settings', require('./routes/setting.routes'));
 app.use('/api/admin/settings', require('./routes/adminSetting.routes'));
 app.use('/api/admin/calendar', require('./routes/calendar.routes'));
 app.use('/api/availability', require('./routes/availability.routes'));
+app.use('/api/bookings', require('./routes/booking.routes'));
+app.use('/api/admin/bookings', require('./routes/adminBooking.routes'));
 
 // Handler rute tidak ditemukan & error handler terpusat
 app.use(notFound);

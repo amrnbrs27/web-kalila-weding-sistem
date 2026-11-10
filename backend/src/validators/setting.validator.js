@@ -1,17 +1,5 @@
 const { z } = require('zod');
-
-/**
- * Normalisasi nomor WhatsApp:
- * Mengubah format "08...", "+628...", atau "628..." menjadi "628..." (tanpa tanda plus atau awalan 0)
- */
-function normalizeWhatsapp(val) {
-  if (typeof val !== 'string') return val;
-  const digitsOnly = val.replace(/\D/g, '');
-  if (digitsOnly.startsWith('0')) {
-    return '62' + digitsOnly.slice(1);
-  }
-  return digitsOnly;
-}
+const { normalizeWhatsapp, isValidPhoneNumber } = require('../utils/phone');
 
 const updateSettingSchema = z
   .object({
@@ -21,7 +9,7 @@ const updateSettingSchema = z
       .trim()
       .transform(normalizeWhatsapp)
       .refine(
-        (val) => /^628[1-9][0-9]{7,11}$/.test(val),
+        isValidPhoneNumber,
         'Nomor WhatsApp admin tidak valid (harus nomor Indonesia yang valid, contoh: 08123456789 atau 628123456789)'
       )
       .optional(),
