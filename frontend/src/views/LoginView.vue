@@ -269,6 +269,7 @@
 <script setup>
 import { reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import { authApi } from "../api/auth";
 import logoImg from "../assets/logo.png";
 import logoLoginImg from "../assets/logo-login.png";
 import bannerImg from "../assets/login-banner.jpg";
@@ -290,26 +291,31 @@ const feedback = reactive({
 const handleLogin = async () => {
   feedback.type = "";
   feedback.message = "";
+
+  if (!form.email || !form.password) {
+    feedback.type = "error";
+    feedback.message = "Harap masukkan email dan password yang valid.";
+    return;
+  }
+
   isLoading.value = true;
 
   try {
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    if (!form.email || !form.password) {
-      feedback.type = "error";
-      feedback.message = "Harap masukkan email dan password yang valid.";
-      return;
-    }
+    const res = await authApi.login(form.email, form.password);
 
     feedback.type = "success";
-    feedback.message = "Login berhasil! Mengalihkan ke halaman...";
-    
+    feedback.message = res.message || "Login berhasil! Mengalihkan ke halaman...";
+
     setTimeout(() => {
       router.push("/");
-    }, 1000);
+    }, 800);
   } catch (err) {
     feedback.type = "error";
-    feedback.message = err?.message || "Terjadi kesalahan saat masuk. Silakan coba lagi.";
+    feedback.message =
+      err?.response?.data?.message ||
+      err?.response?.data?.errors?.[0]?.message ||
+      err?.message ||
+      "Email atau password salah. Silakan periksa kembali.";
   } finally {
     isLoading.value = false;
   }

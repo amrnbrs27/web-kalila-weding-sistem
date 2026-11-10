@@ -237,7 +237,7 @@
                 :type="showPassword ? 'text' : 'password'"
                 required
                 autocomplete="new-password"
-                placeholder="Minimal 6 karakter"
+                placeholder="Minimal 8 karakter"
                 class="w-full rounded-xl sm:rounded-2xl py-3 text-sm placeholder-stone-400 focus:outline-none focus:bg-white transition-all shadow-sm"
                 style="background-color: #F7F5E8; border: 1px solid #E3DDD2; color: #22272B; padding-left: 2.85rem; padding-right: 2.85rem;"
               />
@@ -362,6 +362,7 @@
 <script setup>
 import { reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import { authApi } from "../api/auth";
 import logoImg from "../assets/logo.png";
 import logoLoginImg from "../assets/logo-login.png";
 import bannerImg from "../assets/login-banner.jpg";
@@ -395,9 +396,15 @@ const handleRegister = async () => {
     return;
   }
 
-  if (form.password.length < 6) {
+  if (form.phone.trim().length < 9) {
     feedback.type = "error";
-    feedback.message = "Password minimal terdiri dari 6 karakter.";
+    feedback.message = "Nomor WhatsApp minimal terdiri dari 9 digit.";
+    return;
+  }
+
+  if (form.password.length < 8) {
+    feedback.type = "error";
+    feedback.message = "Password minimal terdiri dari 8 karakter.";
     return;
   }
 
@@ -410,18 +417,26 @@ const handleRegister = async () => {
   isLoading.value = true;
 
   try {
-    // Simulasi atau panggilan API registrasi backend
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    const res = await authApi.register({
+      name: form.name.trim(),
+      email: form.email.trim(),
+      phone: form.phone.trim(),
+      password: form.password,
+    });
 
     feedback.type = "success";
-    feedback.message = "Akun berhasil dibuat! Mengalihkan ke halaman Login...";
+    feedback.message = res.message || "Akun berhasil dibuat! Mengalihkan ke halaman Login...";
 
     setTimeout(() => {
       router.push("/login");
     }, 1200);
   } catch (err) {
     feedback.type = "error";
-    feedback.message = err?.message || "Terjadi kesalahan saat pendaftaran. Silakan coba lagi.";
+    feedback.message =
+      err?.response?.data?.message ||
+      err?.response?.data?.errors?.[0]?.message ||
+      err?.message ||
+      "Terjadi kesalahan saat pendaftaran. Silakan coba lagi.";
   } finally {
     isLoading.value = false;
   }
