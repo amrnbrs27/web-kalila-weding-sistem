@@ -257,13 +257,20 @@ async function cleanTrackedData() {
     });
   }
 
-  // Bersihkan aset Cloudinary yang terlacak
+  // Bersihkan aset Cloudinary yang terlacak (mendukung tipe upload biasa dan authenticated)
   if (tracked.cloudinaryPublicIds.size > 0) {
     for (const pid of tracked.cloudinaryPublicIds) {
       try {
-        await cloudinary.uploader.destroy(pid);
+        const res = await cloudinary.uploader.destroy(pid);
+        if (res.result === 'not found') {
+          await cloudinary.uploader.destroy(pid, { type: 'authenticated' });
+        }
       } catch (err) {
-        console.warn(`[Cleanup Cloudinary Gagal]: publicId=${pid}`);
+        try {
+          await cloudinary.uploader.destroy(pid, { type: 'authenticated' });
+        } catch (authErr) {
+          console.warn(`[Cleanup Cloudinary Gagal]: publicId=${pid}`);
+        }
       }
     }
   }

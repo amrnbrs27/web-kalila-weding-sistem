@@ -844,6 +844,7 @@ async function runBookingTests() {
       status: 'menunggu_dp',
       paymentStatus: 'belum_dp',
       dpAmount: 1000000,
+      totalPrice: pkgDekor.price,
     });
     trackBooking(bWaitingO._id);
 

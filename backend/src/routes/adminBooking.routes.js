@@ -5,14 +5,20 @@ const {
   adminBookingQuerySchema,
   createManualBookingSchema,
   updateBookingStatusSchema,
-  recordSettlementSchema,
 } = require('../validators/booking.validator');
+const {
+  recordSettlementSchema,
+  updateBookingTotalPriceSchema,
+  recordRefundSchema,
+} = require('../validators/payment.validator');
 const {
   getAdminBookings,
   getAdminBookingById,
   updateBookingStatus,
   createManualBooking,
   recordSettlement,
+  updateBookingTotalPrice,
+  recordRefund,
 } = require('../controllers/adminBooking.controller');
 
 const router = express.Router();
@@ -24,6 +30,8 @@ router.post('/manual', validate(createManualBookingSchema), createManualBooking)
 router.get('/:id', getAdminBookingById);
 router.patch('/:id/status', validate(updateBookingStatusSchema), updateBookingStatus);
 router.patch('/:id/settlement', validate(recordSettlementSchema), recordSettlement);
+router.patch('/:id/total', validate(updateBookingTotalPriceSchema), updateBookingTotalPrice);
+router.post('/:id/refund', validate(recordRefundSchema), recordRefund);
 
 module.exports = router;
 

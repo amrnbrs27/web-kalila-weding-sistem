@@ -1289,8 +1289,7 @@ Mencatat pelunasan sisa pembayaran setelah DP terbayar (biasanya dilakukan sebel
   "data": {
     "booking": {
       "_id": "673012ab34cd56ef78909999",
-      "paymentStatus": "lunas",
-      ...
+      "paymentStatus": "lunas"
     },
     "payment": {
       "_id": "673012ab34cd56ef78908888",
@@ -1298,11 +1297,358 @@ Mencatat pelunasan sisa pembayaran setelah DP terbayar (biasanya dilakukan sebel
       "amount": 44000000,
       "method": "transfer",
       "status": "approved",
-      "source": "manual",
-      ...
+      "source": "manual"
     }
   }
 }
 ```
+
+---
+
+### 8.6 Mengubah Total Harga Pesanan (Admin)
+
+Memperbarui total harga pesanan sebelum lunas (misal ada penambahan request dekorasi atau menu).
+
+- **Endpoint:** `PATCH /api/admin/bookings/:id/total`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`, `Content-Type: application/json`
+
+#### Request Body
+| Field | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `totalPrice` | Number | Ya | Total harga baru (integer >= dpAmount pesanan) |
+| `reason` | String | Tidak | Alasan perubahan harga |
+
+```json
+{
+  "totalPrice": 47000000,
+  "reason": "Penambahan dekor lorong karpet merah"
+}
+```
+
+---
+
+### 8.7 Mencatat Pengembalian Dana / Refund (Admin)
+
+Mencatat pengembalian dana manual untuk pesanan yang telah dibatalkan.
+
+- **Endpoint:** `POST /api/admin/bookings/:id/refund`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`, `Content-Type: application/json`
+
+#### Request Body
+| Field | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `amount` | Number | Ya | Nominal pengembalian (integer > 0, tidak boleh melebihi sisa dana masuk) |
+| `method` | String | Ya | `"transfer"` \| `"qris"` \| `"tunai"` \| `"lainnya"` |
+| `paidAt` | String / Date | Tidak | Waktu pengembalian dana |
+| `note` | String | Tidak | Catatan transfer pengembalian |
+
+```json
+{
+  "amount": 1000000,
+  "method": "transfer",
+  "note": "Refund transfer BCA customer"
+}
+```
+
+---
+
+## 9. Modul Pembayaran Pelanggan (`/api/bookings/:id/payment-*` & `/api/payments`)
+
+### 9.1 Informasi Pembayaran DP (Pelanggan)
+
+Mengambil rekening bank dan QRIS aktif untuk membayar DP pesanan yang sedang menunggu pembayaran.
+
+- **Endpoint:** `GET /api/bookings/:id/payment-info`
+- **Hak Akses:** Pelanggan Terautentikasi (khusus pemilik pesanan)
+- **Headers:** `Authorization: Bearer <customer_token>`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Informasi pembayaran berhasil diambil",
+  "data": {
+    "bookingNumber": "KL20270214-A8K2",
+    "dpAmount": 1000000,
+    "expiresAt": "2026-11-12T02:00:00.000Z",
+    "bankName": "BCA",
+    "accountNumber": "1234567890",
+    "accountHolder": "Kalila Wedding Organizer",
+    "qrisImage": "https://res.cloudinary.com/kalila/image/upload/settings/qris.jpg",
+    "remainingAttempts": 3,
+    "lastRejectionReason": null
+  }
+}
+```
+
+---
+
+### 9.2 Mengunggah Bukti Transfer DP (Pelanggan)
+
+Mengunggah foto bukti transfer ke penyimpanan privat Cloudinary (`type: authenticated`). URL Cloudinary tidak pernah diberikan ke publik.
+
+- **Endpoint:** `POST /api/bookings/:id/payment-proof`
+- **Hak Akses:** Pelanggan Terautentikasi (khusus pemilik pesanan)
+- **Headers:** `Authorization: Bearer <customer_token>`, `Content-Type: multipart/form-data`
+- **Body:** Form-data dengan key `proof` (satu file gambar JPG, PNG, atau WEBP, maks 5 MB).
+- **Rate Limit:** 30 permintaan per 15 menit per IP.
+
+#### Respons Berhasil (`201 Created`)
+```json
+{
+  "success": true,
+  "message": "Bukti transfer berhasil diunggah. Menunggu verifikasi admin.",
+  "data": {
+    "booking": {
+      "_id": "673012ab34cd56ef78909999",
+      "bookingNumber": "KL20270214-A8K2",
+      "status": "menunggu_verifikasi",
+      "paymentStatus": "menunggu_verifikasi",
+      "proofAttempts": 1
+    },
+    "payment": {
+      "_id": "673012ab34cd56ef78908888",
+      "type": "dp",
+      "amount": 1000000,
+      "status": "pending",
+      "attempt": 1,
+      "createdAt": "2026-11-11T03:00:00.000Z"
+    },
+    "whatsapp": {
+      "adminWhatsapp": "6281234567890",
+      "message": "Halo Kalila Organizer, saya telah mengunggah bukti pembayaran DP untuk pesanan KL20270214-A8K2 (Paket Wedding Ruby Luxury). Mohon untuk diverifikasi."
+    }
+  }
+}
+```
+
+---
+
+### 9.3 Mengambil / Streaming Bukti Transfer Privat
+
+Mengambil byte gambar bukti transfer secara aman. Server membaca gambar dari Cloudinary menggunakan URL bertanda tangan berumur pendek dan mem-pipe stream ke klien.
+
+- **Endpoint:** `GET /api/payments/:id/proof`
+- **Hak Akses:** Admin atau Pemilik Pesanan Terautentikasi
+- **Headers:** `Authorization: Bearer <token>`
+- **HTTP Response Headers:**
+  - `Content-Type: image/jpeg` (atau png/webp sesuai isi file)
+  - `Cache-Control: private, no-store`
+  - `X-Content-Type-Options: nosniff`
+
+---
+
+## 10. Modul Verifikasi & Kelola Pembayaran Admin (`/api/admin/payments`)
+
+### 10.1 Daftar Pembayaran Masuk (Admin)
+
+Melihat seluruh pembayaran DP dan pelunasan dengan kalkulasi ketersediaan slot tanggal real-time pada antrean pending.
+
+- **Endpoint:** `GET /api/admin/payments`
+- **Hak Akses:** Khusus Admin
+- **Query Parameters:**
+  - `status`: `"pending"` \| `"approved"` \| `"rejected"` \| `"void"`
+  - `type`: `"dp"` \| `"pelunasan"` \| `"pengembalian"`
+  - `source`: `"customer"` \| `"manual"`
+  - `dateFrom` & `dateTo`: Rentang tanggal `YYYY-MM-DD`
+  - `q`: Pencarian teks (nomor pesanan, nama/telepon pelanggan)
+  - `sort`: `"terlama"` \| `"terbaru"` (default `"terlama"` untuk status pending agar antrean diproses adil)
+  - `page` & `limit`
+
+---
+
+### 10.2 Detail Pembayaran Admin
+
+Melihat detail satu pembayaran, ringkasan pesanan, serta riwayat percobaan unggah bukti sebelumnya.
+
+- **Endpoint:** `GET /api/admin/payments/:id`
+- **Hak Akses:** Khusus Admin
+
+---
+
+### 10.3 Menyetujui Pembayaran DP (Admin Approve)
+
+Menyetujui pembayaran DP yang menunggu verifikasi. Sistem menjalankan penguncian slot tanggal atomik (`withSlotLock`). Bila kuota penuh atau tanggal diblokir, persetujuan ditolak (`409 Conflict`) dan status pembayaran tetap `pending`.
+
+- **Endpoint:** `PATCH /api/admin/payments/:id/approve`
+- **Hak Akses:** Khusus Admin
+
+---
+
+### 10.4 Menolak Bukti Pembayaran DP (Admin Reject)
+
+Menolak bukti transfer karena alasan tidak valid (misal gambar buram atau palsu). Sistem memperpanjang batas waktu pembayaran di Settings. Bila penolakan mencapai batas maksimal percobaan (`Setting.maxProofAttempts`), pesanan otomatis dibatalkan.
+
+- **Endpoint:** `PATCH /api/admin/payments/:id/reject`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Content-Type: application/json`
+
+#### Request Body
+```json
+{
+  "reason": "Foto bukti transfer buram dan nominal tidak terlihat"
+}
+```
+
+---
+
+### 10.5 Void Pembayaran Manual (Admin Void)
+
+Membatalkan (void) pencatatan pembayaran manual bertipe `pelunasan` atau `pengembalian` jika terjadi kesalahan administrasi.
+
+- **Endpoint:** `PATCH /api/admin/payments/:id/void`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Content-Type: application/json`
+
+#### Request Body
+```json
+{
+  "reason": "Koreksi salah input nominal pelunasan"
+}
+```
+
+---
+
+## 11. Modul Dashboard Pesanan Admin (`/api/admin/dashboard`)
+
+Modul ini menyediakan ringkasan data operasional pesanan dan grafik pesanan masuk untuk dashboard admin (PRD 5.1). Seluruh perhitungan waktu mengacu pada zona waktu **Asia/Jakarta (WIB, UTC+7)**.
+
+### 11.1 Overview Pesanan (Admin)
+
+Mengambil ringkasan metrik pesanan, antrean verifikasi pembayaran DP, 10 pesanan terbaru, acara terdekat, dan 5 antrean pembayaran terlama dalam satu panggilan efisien.
+
+- **Endpoint:** `GET /api/admin/dashboard/orders-overview`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query Parameters:**
+  - `recentLimit` (opsional, default 10, min 1, max 20): Jumlah pesanan terbaru yang diambil.
+  - `upcomingDays` (opsional, default 30, min 1, max 90): Jangkauan hari ke depan untuk acara terdekat.
+  - `upcomingLimit` (opsional, default 10, min 1, max 20): Jumlah acara terdekat yang diambil.
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Overview pesanan dashboard berhasil diambil",
+  "data": {
+    "summary": {
+      "newToday": 3,
+      "new7Days": 12,
+      "byStatus": {
+        "menunggu_dp": 2,
+        "menunggu_verifikasi": 3,
+        "terkonfirmasi": 8,
+        "berlangsung": 1,
+        "selesai": 15,
+        "dibatalkan": 4
+      },
+      "upcoming7Days": 4,
+      "pendingVerification": {
+        "count": 3,
+        "oldestWaitingSince": "2026-11-10T14:20:00.000Z"
+      }
+    },
+    "recentOrders": [
+      {
+        "id": "673012ab34cd56ef78909999",
+        "bookingNumber": "KL20270214-A8K2",
+        "createdAt": "2026-11-11T03:00:00.000Z",
+        "status": "menunggu_dp",
+        "paymentStatus": "belum_dp",
+        "category": "wedding",
+        "packageName": "Paket Wedding Ruby Luxury",
+        "customerName": "Budi Santoso",
+        "eventDate": "2027-02-14",
+        "eventName": "Akad & Resepsi Pernikahan",
+        "source": "website"
+      }
+    ],
+    "upcomingEvents": [
+      {
+        "id": "673012ab34cd56ef78909999",
+        "bookingNumber": "KL20270214-A8K2",
+        "category": "wedding",
+        "packageName": "Paket Wedding Ruby Luxury",
+        "customerName": "Budi Santoso",
+        "customerPhone": "081234567890",
+        "eventDate": "2027-02-14",
+        "eventName": "Akad & Resepsi Pernikahan",
+        "location": "Gedung Serbaguna Kalila, Jakarta",
+        "paymentStatus": "dp_dibayar",
+        "daysUntil": 3
+      }
+    ],
+    "pendingPayments": [
+      {
+        "paymentId": "673012ab34cd56ef78908888",
+        "bookingNumber": "KL20270214-A8K2",
+        "customerName": "Budi Santoso",
+        "category": "wedding",
+        "eventDate": "2027-02-14",
+        "amount": 1000000,
+        "createdAt": "2026-11-10T14:20:00.000Z",
+        "attempt": 1
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 11.2 Grafik Pesanan Masuk (Admin)
+
+Menghasilkan data time-series pesanan masuk per kategori (`dekor`, `catering`, `wedding`) yang dihitung berdasarkan waktu pembuatan (`createdAt`, WIB).
+
+- **Endpoint:** `GET /api/admin/dashboard/orders-chart`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query Parameters:**
+  - `from` (opsional, format `YYYY-MM-DD`): Tanggal awal (default 30 hari yang lalu).
+  - `to` (opsional, format `YYYY-MM-DD`): Tanggal akhir (default hari ini WIB, tidak boleh di masa depan).
+  - `groupBy` (opsional, `"day"` \| `"week"` \| `"month"`, default `"day"`): Pengelompokan data (`week` mengelompokkan ke hari Senin awal minggu).
+  - `includeCancelled` (opsional, boolean, default `true`): Apakah pesanan berstatus dibatalkan disertakan dalam grafik.
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Data grafik pesanan berhasil diambil",
+  "data": {
+    "from": "2026-10-12",
+    "to": "2026-11-11",
+    "groupBy": "day",
+    "labels": [
+      "2026-10-12",
+      "2026-10-13",
+      "..."
+    ],
+    "series": [
+      {
+        "category": "dekor",
+        "data": [1, 0, 2]
+      },
+      {
+        "category": "catering",
+        "data": [0, 1, 1]
+      },
+      {
+        "category": "wedding",
+        "data": [2, 1, 0]
+      }
+    ],
+    "totals": {
+      "dekor": 3,
+      "catering": 2,
+      "wedding": 3,
+      "all": 8
+    }
+  }
+}
+```
+
+
 
 

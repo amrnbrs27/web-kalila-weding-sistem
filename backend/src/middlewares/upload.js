@@ -161,9 +161,13 @@ const uploadSingleImageMiddleware = (fieldName = 'image') => {
   };
 };
 
+// Middleware khusus untuk upload bukti transfer (field 'proof')
+const uploadProofMiddleware = uploadSingleImageMiddleware('proof');
+
 module.exports = {
   uploadPackageImagesMiddleware,
   uploadSingleImageMiddleware,
+  uploadProofMiddleware,
   uploadRateLimiter,
   detectImageMimeType,
 };

@@ -133,6 +133,11 @@ const bookingSchema = new mongoose.Schema(
       min: [0, 'Nominal DP tidak boleh negatif'],
       default: 1000000,
     },
+    totalPrice: {
+      type: Number,
+      min: [0, 'Total harga tidak boleh negatif'],
+      default: null,
+    },
     expiresAt: {
       type: Date,
       default: null,
@@ -170,6 +175,8 @@ const bookingSchema = new mongoose.Schema(
 bookingSchema.index({ eventDate: 1, category: 1, status: 1 });
 bookingSchema.index({ customer: 1, createdAt: -1 });
 bookingSchema.index({ status: 1, expiresAt: 1 });
+bookingSchema.index({ createdAt: -1 });
+bookingSchema.index({ category: 1, createdAt: -1 });
 
 /**
  * Generator nomor booking otomatis sebelum disimpan (Mongoose 9: async function tanpa parameter next)

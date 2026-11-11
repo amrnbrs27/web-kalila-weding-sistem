@@ -10,8 +10,8 @@ const paymentSchema = new mongoose.Schema(
     type: {
       type: String,
       enum: {
-        values: ['dp', 'pelunasan'],
-        message: 'Tipe pembayaran harus berupa dp atau pelunasan',
+        values: ['dp', 'pelunasan', 'pengembalian'],
+        message: 'Tipe pembayaran harus berupa dp, pelunasan, atau pengembalian',
       },
       required: [true, 'Tipe pembayaran wajib diisi'],
     },
@@ -43,8 +43,8 @@ const paymentSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: {
-        values: ['pending', 'approved', 'rejected'],
-        message: 'Status pembayaran harus pending, approved, atau rejected',
+        values: ['pending', 'approved', 'rejected', 'void'],
+        message: 'Status pembayaran harus pending, approved, rejected, atau void',
       },
       default: 'pending',
     },
@@ -52,6 +52,20 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       default: '',
       trim: true,
+    },
+    voidReason: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    voidedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    voidedAt: {
+      type: Date,
+      default: null,
     },
     attempt: {
       type: Number,
@@ -92,6 +106,8 @@ const paymentSchema = new mongoose.Schema(
 
 paymentSchema.index({ booking: 1, type: 1 });
 paymentSchema.index({ status: 1, createdAt: 1 });
+paymentSchema.index({ type: 1, status: 1, createdAt: -1 });
+paymentSchema.index({ type: 1, status: 1, createdAt: 1 });
 
 module.exports = mongoose.model('Payment', paymentSchema);
 

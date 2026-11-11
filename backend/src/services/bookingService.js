@@ -6,6 +6,7 @@ const Payment = require('../models/Payment');
 const User = require('../models/User');
 const { isDateAvailable } = require('./availabilityService');
 const { withSlotLock } = require('./slotService');
+const { getBookingBilling } = require('./paymentService');
 const AppError = require('../utils/AppError');
 
 /**
@@ -140,6 +141,7 @@ async function createCustomerBooking(data, user) {
   // 5. Ambil pengaturan untuk DP dan batas waktu pembayaran
   const settings = await Setting.getSettings();
   const dpAmount = settings.dpAmount ?? 1000000;
+  const determinedTotal = data.totalPrice !== undefined ? data.totalPrice : pkg.price;
   const deadlineHours = settings.paymentDeadlineHours ?? 24;
   const expiresAt = new Date(Date.now() + deadlineHours * 60 * 60 * 1000);
 
@@ -168,6 +170,7 @@ async function createCustomerBooking(data, user) {
     status: 'menunggu_dp',
     paymentStatus: 'belum_dp',
     dpAmount,
+    totalPrice: pkg.price,
     expiresAt,
     statusHistory: [
       {
@@ -226,7 +229,16 @@ async function getCustomerBookingById(id, userId) {
     throw new AppError('Pesanan tidak ditemukan', 404);
   }
 
-  return formatCustomerBookingResponse(booking);
+  const payments = await Payment.find({ booking: booking._id }).lean();
+  const fullBilling = getBookingBilling(booking, payments);
+  const formatted = formatCustomerBookingResponse(booking);
+  formatted.billing = {
+    total: fullBilling.total,
+    dpPaid: fullBilling.dpPaid,
+    remaining: fullBilling.remaining,
+  };
+
+  return formatted;
 }
 
 /**
@@ -315,9 +327,12 @@ async function getAdminBookingById(id) {
     return pCopy;
   });
 
+  const billing = getBookingBilling(booking, rawPayments);
+
   return {
     booking,
     payments,
+    billing,
   };
 }
 
@@ -387,6 +402,34 @@ async function updateBookingStatus(id, { status: newStatus, reason, refundNote }
     if (refundNote) {
       updateFields.refundNote = refundNote;
     }
+  }
+
+  if (newStatus === 'dibatalkan') {
+    return await mongoose.connection.transaction(async (session) => {
+      const updated = await Booking.findOneAndUpdate(
+        { _id: id, status: cur },
+        updateFields,
+        { session, returnDocument: 'after', runValidators: true }
+      );
+
+      if (!updated) {
+        throw new AppError('Status pesanan telah berubah oleh proses lain', 409);
+      }
+
+      // Tolak semua pembayaran pending yang masih menggantung
+      await Payment.updateMany(
+        { booking: id, status: 'pending' },
+        {
+          status: 'rejected',
+          rejectionReason: 'Pesanan dibatalkan',
+          verifiedBy: adminId,
+          verifiedAt: new Date(),
+        },
+        { session }
+      );
+
+      return updated;
+    });
   }
 
   // Update atomik dengan pengecekan status saat ini agar aman dari bentrok konkuren dua admin
@@ -467,6 +510,8 @@ async function createManualBooking(data, adminId) {
 
   const settings = await Setting.getSettings();
   const dpAmount = settings.dpAmount ?? 1000000;
+  const determinedTotal =
+    data.totalPrice !== undefined ? data.totalPrice : (packageSnapshot?.price ?? null);
 
   // Kasus A: dpPaid = false (pesanan manual belum bayar DP)
   if (!data.dpPaid) {
@@ -499,6 +544,7 @@ async function createManualBooking(data, adminId) {
       status: 'menunggu_dp',
       paymentStatus: 'belum_dp',
       dpAmount,
+      totalPrice: determinedTotal,
       expiresAt,
       statusHistory: [
         {
@@ -531,6 +577,7 @@ async function createManualBooking(data, adminId) {
       status: 'terkonfirmasi',
       paymentStatus: 'dp_dibayar',
       dpAmount,
+      totalPrice: determinedTotal,
       expiresAt: null,
       statusHistory: [
         {
@@ -569,7 +616,7 @@ async function createManualBooking(data, adminId) {
 }
 
 /**
- * 8. Pencatatan pelunasan pesanan oleh admin
+ * 8. Pencatatan pelunasan pesanan oleh admin (Satu kali, tepat sebesar sisa tagihan)
  */
 async function recordSettlement(id, data, adminId) {
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -599,6 +646,24 @@ async function recordSettlement(id, data, adminId) {
     );
   }
 
+  const payments = await Payment.find({ booking: id });
+  const billing = getBookingBilling(booking, payments);
+
+  if (billing.total === null) {
+    throw new AppError('Total harga belum ditetapkan untuk pesanan ini', 409);
+  }
+
+  const remaining = billing.remaining;
+
+  if (data.amount !== undefined && data.amount !== remaining) {
+    throw new AppError(
+      `Nominal pelunasan tidak sesuai. Sisa tagihan adalah Rp${remaining.toLocaleString('id-ID')}`,
+      400
+    );
+  }
+
+  const settlementAmount = remaining;
+
   // Jalankan dalam satu MongoDB transaction
   return await mongoose.connection.transaction(async (session) => {
     const updated = await Booking.findOneAndUpdate(
@@ -610,7 +675,7 @@ async function recordSettlement(id, data, adminId) {
             status: booking.status,
             at: new Date(),
             by: adminId,
-            note: `Pelunasan dicatat: Rp${data.amount.toLocaleString('id-ID')} (${data.method})`,
+            note: `Pelunasan dicatat: Rp${settlementAmount.toLocaleString('id-ID')} (${data.method || 'transfer'})`,
           },
         },
       },
@@ -621,16 +686,130 @@ async function recordSettlement(id, data, adminId) {
       throw new AppError('Pesanan telah diperbarui oleh proses lain atau sudah lunas', 409);
     }
 
+    let payment = null;
+    if (settlementAmount > 0) {
+      const [createdPayment] = await Payment.create(
+        [
+          {
+            booking: id,
+            type: 'pelunasan',
+            amount: settlementAmount,
+            method: data.method || 'transfer',
+            status: 'approved',
+            source: 'manual',
+            paidAt: data.paidAt ? new Date(data.paidAt) : new Date(),
+            verifiedBy: adminId,
+            verifiedAt: new Date(),
+            note: data.note || '',
+          },
+        ],
+        { session }
+      );
+      payment = createdPayment;
+    }
+
+    return {
+      booking: updated,
+      payment,
+    };
+  });
+}
+
+/**
+ * 9. Mengubah total harga pesanan oleh admin
+ */
+async function updateBookingTotalPrice(id, { totalPrice, reason }, adminId) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new AppError('Pesanan tidak ditemukan', 404);
+  }
+
+  const booking = await Booking.findById(id);
+  if (!booking) {
+    throw new AppError('Pesanan tidak ditemukan', 404);
+  }
+
+  if (booking.paymentStatus === 'lunas') {
+    throw new AppError('Total harga tidak dapat diubah pada pesanan yang sudah lunas', 409);
+  }
+
+  if (!['menunggu_dp', 'menunggu_verifikasi', 'terkonfirmasi', 'berlangsung'].includes(booking.status)) {
+    throw new AppError(
+      `Total harga tidak dapat diubah pada pesanan berstatus "${booking.status}"`,
+      409
+    );
+  }
+
+  if (totalPrice < (booking.dpAmount || 0)) {
+    throw new AppError(
+      `Total harga tidak boleh lebih kecil dari nominal DP (Rp${(booking.dpAmount || 0).toLocaleString('id-ID')})`,
+      400
+    );
+  }
+
+  const oldTotal = booking.totalPrice ?? booking.packageSnapshot?.price ?? null;
+  const oldText = oldTotal === null ? 'belum ditetapkan' : `Rp${oldTotal.toLocaleString('id-ID')}`;
+  const noteText = `Total harga diubah dari ${oldText} menjadi Rp${totalPrice.toLocaleString('id-ID')}${
+    reason ? ' (' + reason + ')' : ''
+  }`;
+
+  const updated = await Booking.findByIdAndUpdate(
+    id,
+    {
+      totalPrice,
+      $push: {
+        statusHistory: {
+          status: booking.status,
+          at: new Date(),
+          by: adminId,
+          note: noteText,
+        },
+      },
+    },
+    { returnDocument: 'after', runValidators: true }
+  );
+
+  return updated;
+}
+
+/**
+ * 10. Mencatat pengembalian dana (refund) untuk pesanan yang dibatalkan
+ */
+async function recordRefund(id, data, adminId) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new AppError('Pesanan tidak ditemukan', 404);
+  }
+
+  const booking = await Booking.findById(id);
+  if (!booking) {
+    throw new AppError('Pesanan tidak ditemukan', 404);
+  }
+
+  if (booking.status !== 'dibatalkan') {
+    throw new AppError('Pengembalian dana hanya dapat dicatat untuk pesanan yang telah dibatalkan', 409);
+  }
+
+  const payments = await Payment.find({ booking: id });
+  const billing = getBookingBilling(booking, payments);
+  const maxRefundable = billing.dpPaid + billing.pelunasanPaid - billing.refunded;
+
+  if (data.amount > maxRefundable) {
+    throw new AppError(
+      `Nominal pengembalian (Rp${data.amount.toLocaleString('id-ID')}) melebihi sisa dana yang dapat dikembalikan (Rp${maxRefundable.toLocaleString('id-ID')})`,
+      409
+    );
+  }
+
+  return await mongoose.connection.transaction(async (session) => {
     const [payment] = await Payment.create(
       [
         {
           booking: id,
-          type: 'pelunasan',
+          type: 'pengembalian',
           amount: data.amount,
-          method: data.method,
+          method: data.method || 'transfer',
           status: 'approved',
           source: 'manual',
-          paidAt: new Date(data.paidAt),
+          paidAt: data.paidAt ? new Date(data.paidAt) : new Date(),
           verifiedBy: adminId,
           verifiedAt: new Date(),
           note: data.note || '',
@@ -639,9 +818,26 @@ async function recordSettlement(id, data, adminId) {
       { session }
     );
 
+    await Booking.findByIdAndUpdate(
+      id,
+      {
+        $push: {
+          statusHistory: {
+            status: 'dibatalkan',
+            at: new Date(),
+            by: adminId,
+            note: `Pengembalian dana dicatat: Rp${data.amount.toLocaleString('id-ID')} (${data.method || 'transfer'})${
+              data.note ? ' - ' + data.note : ''
+            }`,
+          },
+        },
+      },
+      { session }
+    );
+
     return {
-      booking: updated,
       payment,
+      remainingRefundable: maxRefundable - data.amount,
     };
   });
 }
@@ -655,6 +851,8 @@ module.exports = {
   updateBookingStatus,
   createManualBooking,
   recordSettlement,
+  updateBookingTotalPrice,
+  recordRefund,
   validateCategoryFormData,
   formatCustomerBookingResponse,
   saveBookingWithRetry,

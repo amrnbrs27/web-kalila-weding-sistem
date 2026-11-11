@@ -46,11 +46,31 @@ const recordSettlement = asyncHandler(async (req, res) => {
   });
 });
 
+const updateBookingTotalPrice = asyncHandler(async (req, res) => {
+  const data = await bookingService.updateBookingTotalPrice(req.params.id, req.body, req.user._id);
+  res.status(200).json({
+    success: true,
+    message: 'Total harga pesanan berhasil diperbarui',
+    data,
+  });
+});
+
+const recordRefund = asyncHandler(async (req, res) => {
+  const data = await bookingService.recordRefund(req.params.id, req.body, req.user._id);
+  res.status(201).json({
+    success: true,
+    message: 'Pengembalian dana berhasil dicatat',
+    data,
+  });
+});
+
 module.exports = {
   getAdminBookings,
   getAdminBookingById,
   updateBookingStatus,
   createManualBooking,
   recordSettlement,
+  updateBookingTotalPrice,
+  recordRefund,
 };
 
