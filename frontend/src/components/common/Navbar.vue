@@ -34,21 +34,20 @@
           </router-link>
 
           <!-- PORTOFOLIO Dropdown -->
-          <div
-            class="relative group"
-            @mouseenter="portfolioOpen = true"
-            @mouseleave="portfolioOpen = false"
-          >
+          <div class="relative" @click.stop>
             <button
-              class="flex items-center gap-1.5 transition-colors hover:text-[#D4AF37] uppercase text-gray-300 group-hover:text-white"
-              :class="$route.path.startsWith('/portofolio') ? 'text-white font-bold' : ''"
+              type="button"
+              @click="toggleDropdown('portfolio')"
+              class="flex items-center gap-1.5 transition-colors hover:text-[#D4AF37] uppercase text-gray-300 cursor-pointer"
+              :class="$route.path.startsWith('/portofolio') || portfolioOpen ? 'text-white font-bold' : ''"
               aria-haspopup="true"
               :aria-expanded="portfolioOpen"
               aria-label="Menu Portofolio"
             >
               <span>PORTOFOLIO</span>
               <svg
-                class="w-3 h-3 text-gray-400 group-hover:rotate-180 transition-transform duration-200"
+                class="w-3 h-3 text-gray-400 transition-transform duration-200"
+                :class="{ 'rotate-180': portfolioOpen }"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -60,6 +59,7 @@
             <!-- Dropdown Popover -->
             <div
               v-show="portfolioOpen"
+              @click="closeAllDropdowns"
               class="absolute left-1/2 -translate-x-1/2 mt-3 w-48 rounded-2xl bg-[#101115]/95 border border-white/10 shadow-2xl py-2 z-50 backdrop-blur-xl"
             >
               <router-link
@@ -84,21 +84,20 @@
           </div>
 
           <!-- PACKAGE Dropdown -->
-          <div
-            class="relative group"
-            @mouseenter="packageOpen = true"
-            @mouseleave="packageOpen = false"
-          >
+          <div class="relative" @click.stop>
             <button
-              class="flex items-center gap-1.5 transition-colors hover:text-[#D4AF37] uppercase text-gray-300 group-hover:text-white"
-              :class="$route.path.startsWith('/katalog') ? 'text-white font-bold' : ''"
+              type="button"
+              @click="toggleDropdown('package')"
+              class="flex items-center gap-1.5 transition-colors hover:text-[#D4AF37] uppercase text-gray-300 cursor-pointer"
+              :class="$route.path.startsWith('/katalog') || packageOpen ? 'text-white font-bold' : ''"
               aria-haspopup="true"
               :aria-expanded="packageOpen"
               aria-label="Menu Paket Pernikahan"
             >
               <span>PACKAGE</span>
               <svg
-                class="w-3 h-3 text-gray-400 group-hover:rotate-180 transition-transform duration-200"
+                class="w-3 h-3 text-gray-400 transition-transform duration-200"
+                :class="{ 'rotate-180': packageOpen }"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -109,6 +108,7 @@
 
             <div
               v-show="packageOpen"
+              @click="closeAllDropdowns"
               class="absolute left-1/2 -translate-x-1/2 mt-3 w-52 rounded-2xl bg-[#101115]/95 border border-white/10 shadow-2xl py-2 z-50 backdrop-blur-xl"
             >
               <router-link
@@ -171,7 +171,7 @@
           <div v-if="authStore.isAuthenticated" class="relative">
             <button
               type="button"
-              @click.stop="profileDropdownOpen = !profileDropdownOpen"
+              @click.stop="portfolioOpen = false; packageOpen = false; profileDropdownOpen = !profileDropdownOpen"
               class="flex items-center gap-2.5 py-1.5 pl-2 pr-3.5 rounded-full bg-[#18191E]/90 hover:bg-[#20222A] text-stone-200 border border-white/10 hover:border-[#C5A265]/40 transition-all shadow-md cursor-pointer group"
               :aria-expanded="profileDropdownOpen"
               aria-haspopup="true"
@@ -387,6 +387,14 @@ const closeAllDropdowns = () => {
   portfolioOpen.value = false;
   packageOpen.value = false;
   profileDropdownOpen.value = false;
+};
+
+const toggleDropdown = (name) => {
+  const nextPortfolio = name === "portfolio" ? !portfolioOpen.value : false;
+  const nextPackage = name === "package" ? !packageOpen.value : false;
+  closeAllDropdowns();
+  portfolioOpen.value = nextPortfolio;
+  packageOpen.value = nextPackage;
 };
 
 const handleLogout = () => {
