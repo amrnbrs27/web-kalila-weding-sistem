@@ -12,12 +12,16 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, minlength: 8, select: false },
     role: { type: String, enum: ['customer', 'admin'], default: 'customer' },
     isActive: { type: Boolean, default: true },
+    passwordChangedAt: { type: Date, select: false },
   },
   { timestamps: true }
 );
 
 userSchema.pre('save', async function () {
   if (!this.isModified('password')) return;
+  if (!this.isNew) {
+    this.passwordChangedAt = new Date();
+  }
   this.password = await bcrypt.hash(this.password, 12);
 });
 

@@ -166,6 +166,7 @@ const uploadProofMiddleware = uploadSingleImageMiddleware('proof');
 
 module.exports = {
   uploadPackageImagesMiddleware,
+  uploadImagesMiddleware: uploadPackageImagesMiddleware, // alias serbaguna
   uploadSingleImageMiddleware,
   uploadProofMiddleware,
   uploadRateLimiter,

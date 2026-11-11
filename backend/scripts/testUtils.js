@@ -14,6 +14,8 @@ const Booking = require('../src/models/Booking');
 const Payment = require('../src/models/Payment');
 const SlotLock = require('../src/models/SlotLock');
 const Setting = require('../src/models/Setting');
+const Portfolio = require('../src/models/Portfolio');
+const AdminLock = require('../src/models/AdminLock');
 const cloudinary = require('../src/config/cloudinary');
 
 // Koleksi pelacak data uji
@@ -24,6 +26,8 @@ const tracked = {
   bookings: new Set(),
   payments: new Set(),
   slotLocks: new Set(),
+  portfolios: new Set(),
+  adminLocks: new Set(),
   cloudinaryPublicIds: new Set(),
 };
 
@@ -120,6 +124,12 @@ function trackPayment(id) {
 function trackSlotLock(id) {
   if (id) tracked.slotLocks.add(id.toString());
 }
+function trackPortfolio(id) {
+  if (id) tracked.portfolios.add(id.toString());
+}
+function trackAdminLock(key) {
+  if (key) tracked.adminLocks.add(key.toString());
+}
 function trackCloudinaryPublicId(publicId) {
   if (publicId) tracked.cloudinaryPublicIds.add(publicId);
 }
@@ -129,11 +139,12 @@ function trackCloudinaryPublicId(publicId) {
  */
 async function createTestAdmin() {
   const rand = crypto.randomBytes(4).toString('hex');
+  const rawPassword = `TestAdminPass123!${rand}`;
   const user = await User.create({
     name: `Test Admin ${rand}`,
     email: `admin.${rand}@kalila-test.com`,
     phone: `0812${Math.floor(10000000 + Math.random() * 90000000)}`,
-    password: `TestAdminPass123!${rand}`,
+    password: rawPassword,
     role: 'admin',
   });
   trackUser(user._id);
@@ -144,7 +155,7 @@ async function createTestAdmin() {
     { expiresIn: '1h' }
   );
 
-  return { user, token };
+  return { user, token, rawPassword };
 }
 
 /**
@@ -152,11 +163,12 @@ async function createTestAdmin() {
  */
 async function createTestCustomer() {
   const rand = crypto.randomBytes(4).toString('hex');
+  const rawPassword = `TestCustPass123!${rand}`;
   const user = await User.create({
     name: `Test Customer ${rand}`,
     email: `customer.${rand}@kalila-test.com`,
     phone: `0812${Math.floor(10000000 + Math.random() * 90000000)}`,
-    password: `TestCustPass123!${rand}`,
+    password: rawPassword,
     role: 'customer',
   });
   trackUser(user._id);
@@ -167,7 +179,7 @@ async function createTestCustomer() {
     { expiresIn: '1h' }
   );
 
-  return { user, token };
+  return { user, token, rawPassword };
 }
 
 /**
@@ -257,6 +269,13 @@ async function cleanTrackedData() {
     });
   }
 
+  if (tracked.portfolios.size > 0) {
+    await Portfolio.deleteMany({ _id: { $in: Array.from(tracked.portfolios) } });
+  }
+  if (tracked.adminLocks.size > 0) {
+    await AdminLock.deleteMany({ key: { $in: Array.from(tracked.adminLocks) } });
+  }
+
   // Bersihkan aset Cloudinary yang terlacak (mendukung tipe upload biasa dan authenticated)
   if (tracked.cloudinaryPublicIds.size > 0) {
     for (const pid of tracked.cloudinaryPublicIds) {
@@ -290,6 +309,8 @@ module.exports = {
   trackBooking,
   trackPayment,
   trackSlotLock,
+  trackPortfolio,
+  trackAdminLock,
   trackCloudinaryPublicId,
   createTestAdmin,
   createTestCustomer,

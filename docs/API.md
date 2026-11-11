@@ -129,8 +129,18 @@ Masuk ke dalam sistem untuk pelanggan atau admin.
 
 #### Respons Gagal
 - `400 Bad Request`: Format input salah / tidak lengkap.
-- `401 Unauthorized`: Email atau password salah.
+- `401 Unauthorized`: Email atau password salah, atau token lama yang dipakai setelah perubahan password.
 - `403 Forbidden`: Akun dinonaktifkan oleh admin.
+- `429 Too Many Requests`: Melebihi batas maksimal percobaan login yang gagal:
+  - **Lapisan 1 (Per IP):** Maksimal `AUTH_LOGIN_IP_MAX` (default 50 kali) percobaan gagal per 15 menit untuk satu alamat IP.
+  - **Lapisan 2 (Per IP + Email):** Maksimal `AUTH_LOGIN_MAX` (default 10 kali) percobaan gagal per 15 menit untuk kombinasi IP dan email yang sama.
+  - *Catatan: Percobaan login yang berhasil tidak dihitung.*
+
+> **Catatan Keamanan & Arsitektur Autentikasi:**
+> 1. **Pembatalan Token (Token Invalidation):** Ketika password diubah atau direset, seluruh token JWT yang diterbitkan sebelum waktu perubahan password (`iat < floor(passwordChangedAt / 1000)`) otomatis dibatalkan dan ditolak dengan status `401 Unauthorized`.
+> 2. **Dua Lapisan Rate Limiting Login:** Dilindungi pembatas frekuensi ganda (per IP dan per kombinasi IP + Email) dengan `skipSuccessfulRequests: true`.
+> 3. **Konfigurasi Reverse Proxy (`trust proxy`):** Di lingkungan produksi di belakang proxy atau hosting (seperti Nginx, Cloudflare, Railway, dll.), pengembang wajib mengatur `app.set("trust proxy", ...)` sesuai jumlah proxy agar IP pengguna terbaca akurat.
+> 4. **In-Memory Store:** Penyimpanan seluruh pembatas frekuensi berada di memori proses server. Hitungan akan tereset saat server restart dan tidak dibagi antar-instance.
 
 ---
 
@@ -1648,6 +1658,261 @@ Menghasilkan data time-series pesanan masuk per kategori (`dekor`, `catering`, `
   }
 }
 ```
+
+---
+
+## 12. Modul Portofolio (`/api/portfolios` & `/api/admin/portfolios`)
+
+Modul untuk mengelola portofolio hasil karya Kalila (kategori dekor, catering, dan wedding).
+
+### 12.1 Daftar Portofolio Publik
+Mengambil daftar portofolio yang telah dipublikasikan (`isPublished = true`).
+- **Endpoint:** `GET /api/portfolios`
+- **Hak Akses:** Publik
+- **Query Parameters:**
+  - `category` (opsional): `"dekor"` | `"catering"` | `"wedding"`
+  - `featured` (opsional): `"true"` | `"false"`
+  - `q` (opsional): Pencarian teks pada judul atau deskripsi (aman dari regex injection)
+  - `page` (opsional, default `1`): Nomor halaman
+  - `limit` (opsional, default `12`, maks `50`): Jumlah data per halaman
+  - `sort` (opsional, default `"terbaru"`): Whitelist `"terbaru"` | `"terlama"`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Daftar portofolio berhasil diambil",
+  "data": [
+    {
+      "id": "672e12ab34cd56ef78901234",
+      "slug": "pernikahan-megah-rustic-grand",
+      "title": "Pernikahan Megah Rustic Grand",
+      "category": "dekor",
+      "description": "Dekorasi rustic megah di ballroom...",
+      "eventDate": "2025-10-15",
+      "location": "Grand Ballroom Hotel Mulia",
+      "cover": "https://res.cloudinary.com/demo/image/upload/v1/kalila/portfolios/img1.jpg",
+      "imageCount": 3,
+      "isFeatured": true,
+      "createdAt": "2026-11-11T08:00:00.000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 12,
+    "total": 1,
+    "totalPages": 1
+  }
+}
+```
+*Catatan: Respons publik tidak pernah memuat `publicId` Cloudinary.*
+
+---
+
+### 12.2 Detail Portofolio Publik
+Mengambil detail portofolio beserta seluruh galeri gambarnya berdasarkan `slug`.
+- **Endpoint:** `GET /api/portfolios/:slug`
+- **Hak Akses:** Publik
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Detail portofolio berhasil diambil",
+  "data": {
+    "id": "672e12ab34cd56ef78901234",
+    "slug": "pernikahan-megah-rustic-grand",
+    "title": "Pernikahan Megah Rustic Grand",
+    "category": "dekor",
+    "description": "Dekorasi rustic megah di ballroom...",
+    "eventDate": "2025-10-15",
+    "location": "Grand Ballroom Hotel Mulia",
+    "isFeatured": true,
+    "images": [
+      {
+        "_id": "672e12ab34cd56ef78901235",
+        "url": "https://res.cloudinary.com/demo/image/upload/v1/kalila/portfolios/img1.jpg"
+      }
+    ],
+    "createdAt": "2026-11-11T08:00:00.000Z",
+    "updatedAt": "2026-11-11T08:00:00.000Z"
+  }
+}
+```
+
+---
+
+### 12.3 Daftar Portofolio Admin
+Mengambil seluruh portofolio (status draft/published).
+- **Endpoint:** `GET /api/admin/portfolios`
+- **Hak Akses:** Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query Parameters:** `category`, `isPublished` (`true`/`false`), `isFeatured` (`true`/`false`), `q`, `page` (default 1), `limit` (default 10, maks 100), `sort` (`"terbaru"` | `"terlama"` | `"title_asc"` | `"title_desc"`).
+
+---
+
+### 12.4 Detail Portofolio Admin
+- **Endpoint:** `GET /api/admin/portfolios/:id`
+- **Hak Akses:** Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+---
+
+### 12.5 Buat Portofolio Baru (Admin)
+Membuat metadata portofolio baru. Gambar diunggah terpisah via endpoint upload images.
+- **Endpoint:** `POST /api/admin/portfolios`
+- **Hak Akses:** Admin
+- **Headers:** `Authorization: Bearer <admin_token>`, `Content-Type: application/json`
+
+#### Request Body
+| Field | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `category` | String | Ya | `"dekor"` \| `"catering"` \| `"wedding"` |
+| `title` | String | Ya | Judul (3 - 120 karakter) |
+| `description` | String | Tidak | Deskripsi (maks 2000 karakter) |
+| `eventDate` | String | Tidak | Tanggal acara (`YYYY-MM-DD` kalender valid) |
+| `location` | String | Tidak | Lokasi acara (maks 200 karakter) |
+| `isPublished` | Boolean | Tidak | Default `true` |
+| `isFeatured` | Boolean | Tidak | Default `false` |
+
+---
+
+### 12.6 Ubah Portofolio (Admin)
+- **Endpoint:** `PUT /api/admin/portfolios/:id`
+- **Hak Akses:** Admin
+- **Keterangan:** Jika `title` diubah, slug akan otomatis dibuat ulang. Kategori bebas diubah kapan saja.
+
+---
+
+### 12.7 Ubah Status Publikasi / Featured (Admin)
+- **Endpoint:** `PATCH /api/admin/portfolios/:id/status`
+- **Hak Akses:** Admin
+- **Request Body:** `{ "isPublished"?: boolean, "isFeatured"?: boolean }` (minimal salah satu harus ada).
+
+---
+
+### 12.8 Hapus Portofolio (Admin)
+Menghapus dokumen portofolio dan secara otomatis menghapus seluruh gambar terkait di Cloudinary.
+- **Endpoint:** `DELETE /api/admin/portfolios/:id`
+- **Hak Akses:** Admin
+
+---
+
+### 12.9 Unggah Gambar Portofolio (Admin)
+Mengunggah 1 sampai 5 gambar sekaligus ke folder Cloudinary `kalila/portfolios`. Total gambar per portofolio maksimal 12.
+- **Endpoint:** `POST /api/admin/portfolios/:id/images`
+- **Hak Akses:** Admin
+- **Headers:** `Content-Type: multipart/form-data`
+- **Body:** Field `images` (1 - 5 file gambar format JPG, PNG, atau WEBP, maks 5 MB per gambar, divalidasi via magic bytes).
+- **Aturan:** Jika penyimpanan database gagal, seluruh aset yang baru diunggah di Cloudinary otomatis di-rollback (dihapus).
+
+---
+
+### 12.10 Hapus Satu Gambar Portofolio (Admin)
+Menghapus satu gambar dari portofolio dan menghapus asetnya dari Cloudinary.
+- **Endpoint:** `DELETE /api/admin/portfolios/:id/images/:imageId`
+- **Hak Akses:** Admin
+
+---
+
+### 12.11 Jadikan Sampul Portofolio (Admin)
+Memindahkan gambar terpilih menjadi urutan pertama (indeks 0).
+- **Endpoint:** `PATCH /api/admin/portfolios/:id/images/:imageId/cover`
+- **Hak Akses:** Admin
+
+---
+
+## 13. Modul Kelola User Admin (`/api/admin/users`)
+
+Modul untuk mengelola akun admin/staf Kalila. Semua admin memiliki hak akses yang setara. Data pelanggan tidak dikelola di sini.
+
+> **Kebijakan Password Admin:**
+> - Panjang minimal 8 karakter dan maksimal **72 byte UTF-8** (`Buffer.byteLength(password, 'utf8') <= 72`, batas teknis algoritma bcrypt).
+> - Minimal 1 huruf (`[a-zA-Z]`) dan minimal 1 angka (`[0-9]`).
+> - Tidak boleh sama persis dengan alamat email.
+> 
+> **Pembatas Konfirmasi Password Admin (In-Memory):**
+> Pada endpoint yang memeriksa password admin yang sedang login (`PATCH /api/admin/users/me/password`, `POST /api/admin/users`, `POST /api/admin/users/:id/reset-password`), sistem membatasi percobaan konfirmasi password yang gagal dengan kunci ID admin login. Batas diambil dari `AUTH_CONFIRM_MAX` (default 5 kali) per jendela 15 menit. Melebihi batas menghasilkan `429 Too Many Requests`. Percobaan yang berhasil tidak dihitung. Penyimpanan berbasis in-memory server.
+
+### 13.1 Daftar Akun Admin
+Mengambil seluruh akun role `admin`. Akun customer tidak pernah dimuat di endpoint ini.
+- **Endpoint:** `GET /api/admin/users`
+- **Hak Akses:** Admin
+- **Query Parameters:** `isActive` (`true`/`false`), `q` (nama/email), `page` (default 1), `limit` (default 10, maks 100), `sort` (`"terbaru"` | `"terlama"` | `"nama"`).
+
+---
+
+### 13.2 Detail Akun Admin
+- **Endpoint:** `GET /api/admin/users/:id`
+- **Hak Akses:** Admin
+- **Keterangan:** Jika ID adalah milik customer atau tidak ditemukan, menghasilkan `404 Not Found`.
+
+---
+
+### 13.3 Tambah Admin Baru
+- **Endpoint:** `POST /api/admin/users`
+- **Hak Akses:** Admin
+- **Headers:** `Content-Type: application/json`
+
+#### Request Body
+| Field | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `name` | String | Ya | Nama lengkap admin (2 - 100 karakter) |
+| `email` | String | Ya | Email unik (case-insensitive, duplikat `409`) |
+| `phone` | String | Tidak | Nomor telepon (dinormalisasi format 628...) |
+| `password` | String | Ya | Password memenuhi kebijakan |
+| `confirmPassword` | String | Ya | Password admin yang sedang login (salah `403`) |
+
+*Catatan: Field `role` tidak diizinkan dikirim dari klien dan ditolak `400 Bad Request`.*
+
+---
+
+### 13.4 Ubah Data Admin
+Mengubah profil `name`, `email`, atau `phone` admin.
+- **Endpoint:** `PUT /api/admin/users/:id`
+- **Hak Akses:** Admin
+- **Keterangan:** Field `role`, `password`, dan `isActive` dilarang dikirim melalui endpoint ini (`400 Bad Request`).
+
+---
+
+### 13.5 Ubah Status Aktif/Nonaktif Admin
+- **Endpoint:** `PATCH /api/admin/users/:id/status`
+- **Hak Akses:** Admin
+- **Request Body:** `{ "isActive": boolean }`
+- **Aturan Bisnis & Keamanan:**
+  - Admin dilarang menonaktifkan akun miliknya sendiri (`400 Bad Request`).
+  - Sistem wajib memiliki minimal 1 admin aktif; menonaktifkan admin aktif terakhir ditolak (`409 Conflict`).
+  - Dilindungi serialisasi transaksi MongoDB (`AdminLock`) sehingga aman dari race condition ketika dua admin saling menonaktifkan bersamaan.
+  - Akun yang dinonaktifkan ditolak login (`403 Forbidden`) dan seluruh token yang beredar langsung tidak dapat digunakan (`401 Unauthorized`).
+
+---
+
+### 13.6 Ganti Password Akun Sendiri
+- **Endpoint:** `PATCH /api/admin/users/me/password`
+- **Hak Akses:** Admin
+- **Request Body:**
+  ```json
+  {
+    "currentPassword": "PasswordLama123!",
+    "newPassword": "PasswordBaru123!"
+  }
+  ```
+- **Keterangan:** Seluruh token lama langsung tidak berlaku setelah password berhasil diubah (`401 Unauthorized`).
+
+---
+
+### 13.7 Reset Password Admin Lain
+- **Endpoint:** `POST /api/admin/users/:id/reset-password`
+- **Hak Akses:** Admin
+- **Request Body:**
+  ```json
+  {
+    "newPassword": "PasswordBaruAdminTarget123!",
+    "confirmPassword": "PasswordAdminYangSedangLogin!"
+  }
+  ```
+- **Keterangan:** Tidak dapat digunakan untuk mereset akun sendiri (gunakan `/me/password`) atau akun customer (`404`). Seluruh token lama admin target otomatis dibatalkan.
+
 
 
 

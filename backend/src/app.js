@@ -30,6 +30,9 @@ app.use('/api/admin/bookings', require('./routes/adminBooking.routes'));
 app.use('/api/payments', require('./routes/payment.routes'));
 app.use('/api/admin/payments', require('./routes/adminPayment.routes'));
 app.use('/api/admin/dashboard', require('./routes/dashboard.routes'));
+app.use('/api/portfolios', require('./routes/portfolio.routes'));
+app.use('/api/admin/portfolios', require('./routes/adminPortfolio.routes'));
+app.use('/api/admin/users', require('./routes/adminUser.routes'));
 
 // Handler rute tidak ditemukan & error handler terpusat
 app.use(notFound);

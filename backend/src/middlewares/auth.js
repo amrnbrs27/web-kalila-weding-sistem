@@ -9,8 +9,15 @@ exports.authenticate = asyncHandler(async (req, res, next) => {
   if (!token) throw new AppError('Silakan login terlebih dahulu', 401);
 
   const payload = jwt.verify(token, process.env.JWT_SECRET);
-  const user = await User.findById(payload.id);
+  const user = await User.findById(payload.id).select('+passwordChangedAt');
   if (!user || !user.isActive) throw new AppError('Akun tidak ditemukan atau nonaktif', 401);
+
+  if (user.passwordChangedAt) {
+    const changedTimestamp = Math.floor(user.passwordChangedAt.getTime() / 1000);
+    if (payload.iat < changedTimestamp) {
+      throw new AppError('Password telah diubah, silakan login kembali', 401);
+    }
+  }
 
   req.user = user;
   next();
@@ -23,8 +30,14 @@ exports.optionalAuthenticate = asyncHandler(async (req, res, next) => {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(payload.id);
+    const user = await User.findById(payload.id).select('+passwordChangedAt');
     if (user && user.isActive) {
+      if (user.passwordChangedAt) {
+        const changedTimestamp = Math.floor(user.passwordChangedAt.getTime() / 1000);
+        if (payload.iat < changedTimestamp) {
+          return next();
+        }
+      }
       req.user = user;
     }
   } catch (err) {

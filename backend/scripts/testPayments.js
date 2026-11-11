@@ -123,7 +123,8 @@ async function runPaymentTests() {
           qrisImage: { url: 'https://res.cloudinary.com/dummy/qris.jpg', publicId: 'dummy/qris' },
           adminWhatsapp: '6281234567890',
         },
-      }
+      },
+      { upsert: true }
     );
 
     // -------------------------------------------------------------
