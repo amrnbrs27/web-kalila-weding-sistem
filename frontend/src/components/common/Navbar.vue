@@ -3,7 +3,7 @@
     class="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
     :class="[
       isScrolled
-        ? 'bg-[#0A0A0C]/95 backdrop-blur-md border-b border-white/5 py-3 shadow-2xl'
+        ? 'bg-[#161210]/95 backdrop-blur-md border-b border-[#C5A265]/20 py-3 shadow-2xl'
         : 'bg-transparent py-4 sm:py-6'
     ]"
   >
@@ -22,7 +22,12 @@
 
         <!-- 2. CENTER NAVIGATION PILL (Floating Capsule matching Figma exactly) -->
         <nav
-          class="hidden md:flex items-center px-6 lg:px-7 py-2 rounded-full bg-black/60 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_4px_20px_rgba(0,0,0,0.5)] backdrop-blur-md space-x-6 lg:space-x-8 text-[11px] lg:text-[12px] font-medium tracking-[0.14em]"
+          :class="[
+            'hidden md:flex items-center space-x-6 lg:space-x-8 text-[11px] lg:text-[12px] font-medium tracking-[0.14em]',
+            navCapsule
+              ? 'px-6 lg:px-7 py-2 rounded-full bg-black/60 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_4px_20px_rgba(0,0,0,0.5)] backdrop-blur-md'
+              : 'py-2'
+          ]"
         >
           <!-- HOME -->
           <router-link
@@ -33,7 +38,7 @@
             HOME
           </router-link>
 
-          <!-- PORTOFOLIO Dropdown -->
+          <!-- PORTFOLIO Dropdown -->
           <div class="relative" @click.stop>
             <button
               type="button"
@@ -44,7 +49,7 @@
               :aria-expanded="portfolioOpen"
               aria-label="Menu Portofolio"
             >
-              <span>PORTOFOLIO</span>
+              <span>PORTFOLIO</span>
               <svg
                 class="w-3 h-3 text-gray-400 transition-transform duration-200"
                 :class="{ 'rotate-180': portfolioOpen }"
@@ -154,6 +159,7 @@
         <!-- 3. RIGHT CTA BUTTONS (Konsultasi Sekarang + Profile/Login) -->
         <div class="hidden sm:flex items-center gap-3 shrink-0">
           <a
+            v-if="showKonsultasi"
             :href="whatsappUrl"
             target="_blank"
             rel="noopener noreferrer"
@@ -251,14 +257,19 @@
             </transition>
           </div>
 
-          <!-- When NOT Logged In: Login Button -->
+          <!-- When NOT Logged In: MY ACCOUNT Button (Matching Figma exactly) -->
           <router-link
             v-else
             to="/login"
             aria-label="Masuk ke akun Kalila"
-            class="inline-flex items-center justify-center px-6 py-2.5 rounded-full bg-gradient-to-b from-[#941A29] to-[#7B1320] hover:from-[#A82031] hover:to-[#8E1726] text-white text-[12px] font-semibold tracking-wide transition-all duration-300 shadow-[0_4px_16px_rgba(148,26,41,0.5)] hover:scale-105 active:scale-95 text-center"
+            class="inline-flex items-center gap-2 px-5 py-2 sm:py-2.5 rounded-full bg-gradient-to-b from-[#941A29] to-[#700B11] hover:from-[#A82031] hover:to-[#8E1726] border border-[#A82031]/50 text-white text-[12px] font-semibold tracking-wide transition-all duration-300 shadow-[0_4px_16px_rgba(112,11,17,0.5)] hover:scale-105 active:scale-95 text-center"
           >
-            <span>Login</span>
+            <!-- User Icon -->
+            <svg class="w-3.5 h-3.5 shrink-0 fill-none stroke-current" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            <span>MY ACCOUNT</span>
+            <span class="text-xs">→</span>
           </router-link>
         </div>
 
@@ -363,6 +374,17 @@ import { useRouter } from "vue-router";
 import { useAuthStore } from "../../stores/auth";
 import { useToastStore } from "../../stores/toast";
 import logoImg from "../../assets/logo.png";
+
+const props = defineProps({
+  showKonsultasi: {
+    type: Boolean,
+    default: true
+  },
+  navCapsule: {
+    type: Boolean,
+    default: true
+  }
+});
 
 const router = useRouter();
 const authStore = useAuthStore();
