@@ -111,6 +111,16 @@ const settingSchema = new mongoose.Schema(
         trim: true,
       },
     },
+    notificationRecipients: {
+      adminEmails: {
+        type: [String],
+        default: [],
+      },
+      ownerEmails: {
+        type: [String],
+        default: [],
+      },
+    },
   },
   {
     timestamps: true,

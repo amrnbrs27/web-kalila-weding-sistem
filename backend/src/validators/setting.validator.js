@@ -1,6 +1,19 @@
 const { z } = require('zod');
 const { normalizeWhatsapp, isValidPhoneNumber } = require('../utils/phone');
 
+const emailListSchema = z
+  .array(
+    z
+      .string({ invalid_type_error: 'Alamat email harus berupa string' })
+      .trim()
+      .email('Format email penerima notifikasi tidak valid')
+      .toLowerCase()
+  )
+  .transform((list) => Array.from(new Set(list)))
+  .refine((list) => list.length <= 5, {
+    message: 'Maksimal 5 alamat email per daftar penerima',
+  });
+
 const updateSettingSchema = z
   .object({
     businessName: z.string().trim().min(1, 'Nama usaha tidak boleh kosong').optional(),
@@ -69,6 +82,13 @@ const updateSettingSchema = z
         tiktok: z.string().trim().optional(),
       })
       .strict('Field di dalam kontak tidak dikenal')
+      .optional(),
+    notificationRecipients: z
+      .object({
+        adminEmails: emailListSchema.optional(),
+        ownerEmails: emailListSchema.optional(),
+      })
+      .strict('Field di dalam notificationRecipients tidak dikenal')
       .optional(),
   })
   .strict('Field pengaturan tidak dikenal');

@@ -33,6 +33,7 @@ app.use('/api/admin/dashboard', require('./routes/dashboard.routes'));
 app.use('/api/portfolios', require('./routes/portfolio.routes'));
 app.use('/api/admin/portfolios', require('./routes/adminPortfolio.routes'));
 app.use('/api/admin/users', require('./routes/adminUser.routes'));
+app.use('/api/admin/emails', require('./routes/adminEmail.routes'));
 
 // Handler rute tidak ditemukan & error handler terpusat
 app.use(notFound);

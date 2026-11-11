@@ -53,6 +53,10 @@ function formatAdminSettings(doc) {
       facebook: doc.kontak?.facebook || '',
       tiktok: doc.kontak?.tiktok || '',
     },
+    notificationRecipients: {
+      adminEmails: doc.notificationRecipients?.adminEmails || [],
+      ownerEmails: doc.notificationRecipients?.ownerEmails || [],
+    },
     updatedAt: doc.updatedAt,
   };
 }
@@ -87,6 +91,10 @@ async function updateAdminSettings(data) {
     } else if (key === 'maxEventsPerDay' && typeof value === 'object' && value !== null) {
       for (const [mKey, mVal] of Object.entries(value)) {
         updateQuery[`maxEventsPerDay.${mKey}`] = mVal;
+      }
+    } else if (key === 'notificationRecipients' && typeof value === 'object' && value !== null) {
+      for (const [nKey, nVal] of Object.entries(value)) {
+        updateQuery[`notificationRecipients.${nKey}`] = nVal;
       }
     } else {
       updateQuery[key] = value;

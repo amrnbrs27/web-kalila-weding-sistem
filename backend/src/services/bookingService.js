@@ -7,6 +7,7 @@ const User = require('../models/User');
 const { isDateAvailable } = require('./availabilityService');
 const { withSlotLock } = require('./slotService');
 const { getBookingBilling } = require('./paymentService');
+const emailService = require('./email/emailService');
 const AppError = require('../utils/AppError');
 
 /**
@@ -183,6 +184,14 @@ async function createCustomerBooking(data, user) {
   });
 
   const saved = await saveBookingWithRetry(newBooking);
+
+  // Pemicu email notifikasi pesanan baru ke admin dan owner (dibungkus try/catch)
+  try {
+    await emailService.triggerBookingCreatedEmails(saved, settings);
+  } catch (err) {
+    console.error('[Email Trigger Error] createCustomerBooking:', err.message);
+  }
+
   return formatCustomerBookingResponse(saved);
 }
 
@@ -494,9 +503,9 @@ async function createManualBooking(data, adminId) {
     }
     customerId = custUser._id;
     customerSnapshot = {
-      name: data.contactName || custUser.name,
-      phone: data.contactPhone || custUser.phone,
-      email: data.contactEmail || custUser.email,
+      name: data.contactName !== undefined && data.contactName !== '' ? data.contactName : custUser.name,
+      phone: data.contactPhone !== undefined && data.contactPhone !== '' ? data.contactPhone : custUser.phone,
+      email: data.contactEmail !== undefined ? data.contactEmail : custUser.email,
     };
   } else if (data.customer) {
     customerSnapshot = {
@@ -610,6 +619,9 @@ async function createManualBooking(data, adminId) {
       ],
       { session }
     );
+
+    // Enqueue notifikasi konfirmasi booking ke pelanggan di dalam transaction
+    await emailService.triggerBookingConfirmedEmail(saved, settings, { session });
 
     return saved;
   });

@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const Booking = require('../models/Booking');
+const { processEmailOutbox } = require('./sendEmails');
 
 /**
  * Membatalkan semua pesanan berstatus "menunggu_dp" yang telah melewati batas waktu (expiresAt < now)
@@ -57,6 +58,12 @@ function startBookingJobs() {
       }
     } catch (err) {
       console.error('[Cron Job Error] Pembatalan otomatis gagal:', err.message);
+    }
+
+    try {
+      await processEmailOutbox();
+    } catch (err) {
+      console.error('[Cron Job Error] Pemrosesan antrean email gagal:', err.message);
     }
   });
 

@@ -56,7 +56,13 @@ const createBookingSchema = z
       .transform(normalizePhoneNumber)
       .refine(isValidPhoneNumber, 'Nomor telepon kontak tidak valid (harus nomor Indonesia)')
       .optional(),
-    contactEmail: z.string().trim().email('Format email kontak tidak valid').toLowerCase().optional(),
+    contactEmail: z
+      .string()
+      .trim()
+      .email('Format email kontak tidak valid')
+      .toLowerCase()
+      .or(z.literal(''))
+      .optional(),
     guestCount: z
       .number({ invalid_type_error: 'Jumlah tamu harus berupa angka' })
       .int('Jumlah tamu harus bilangan bulat')
@@ -113,7 +119,13 @@ const createManualBookingSchema = z
       .transform(normalizePhoneNumber)
       .refine(isValidPhoneNumber)
       .optional(),
-    contactEmail: z.string().trim().email().toLowerCase().optional(),
+    contactEmail: z
+      .string()
+      .trim()
+      .email('Format email kontak tidak valid')
+      .toLowerCase()
+      .or(z.literal(''))
+      .optional(),
     guestCount: z.number().int().min(1).optional(),
     notes: z.string().trim().max(1000).optional(),
     formData: formDataSchema,

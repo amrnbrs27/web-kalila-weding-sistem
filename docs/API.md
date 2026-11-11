@@ -693,6 +693,10 @@ Mengembalikan konfigurasi lengkap sistem termasuk batas kuota acara harian, info
       "facebook": "",
       "tiktok": "@kalila.organizer"
     },
+    "notificationRecipients": {
+      "adminEmails": ["admin1@kalila.com", "admin2@kalila.com"],
+      "ownerEmails": ["owner@kalila.com"]
+    },
     "updatedAt": "2026-11-10T12:00:00.000Z"
   }
 }
@@ -1912,6 +1916,222 @@ Mengubah profil `name`, `email`, atau `phone` admin.
   }
   ```
 - **Keterangan:** Tidak dapat digunakan untuk mereset akun sendiri (gunakan `/me/password`) atau akun customer (`404`). Seluruh token lama admin target otomatis dibatalkan.
+
+---
+
+## 14. Modul Notifikasi Email & Outbox (`/api/admin/emails`)
+
+Mengelola antrean email transaksional keluar (*Transactional Email Outbox*) dengan proteksi idempotensi, retry backoff exponential, klaim atomik, serta pembersihan berkas otomatis (TTL). Seluruh endpoint pada modul ini membutuhkan token JWT dengan role `admin`.
+
+### 14.1 Daftar Antrean Email (Outbox)
+- **Endpoint:** `GET /api/admin/emails`
+- **Hak Akses:** Admin
+- **Query Parameters:**
+  - `status`: `pending` | `sending` | `sent` | `failed` | `skipped` (opsional)
+  - `type`: `booking_created_admin` | `booking_created_owner` | `payment_proof_admin` | `booking_confirmed_customer` (opsional)
+  - `q`: Pencarian teks pada alamat penerima, subject, atau nomor pesanan (opsional, dilindungi sanitasi regex)
+  - `page`: Nomor halaman (default: `1`)
+  - `limit`: Jumlah per halaman (default: `10`, maksimal: `100`)
+  - `sort`: `terbaru` | `terlama` (default: `terbaru`)
+- **Keamanan:** Konten HTML tidak disertakan pada respons daftar; alamat email disamarkan sebagian (*masked*).
+- **Respons Berhasil (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Daftar antrean email berhasil diambil",
+    "data": {
+      "items": [
+        {
+          "_id": "672f00000000000000000001",
+          "type": "booking_created_admin",
+          "to": "a***1@kalila.com",
+          "originalTo": null,
+          "subject": "Pesanan baru KLA-20261112-001 - Dekor - 12 Nov 2026",
+          "status": "sent",
+          "attempts": 1,
+          "lastError": null,
+          "provider": "resend",
+          "sentAt": "2026-11-12T08:00:05.000Z",
+          "purgeAt": "2026-12-12T08:00:05.000Z",
+          "createdAt": "2026-11-12T08:00:00.000Z",
+          "booking": {
+            "_id": "672f000000000000000000aa",
+            "bookingNumber": "KLA-20261112-001"
+          }
+        }
+      ],
+      "pagination": {
+        "page": 1,
+        "limit": 10,
+        "total": 1,
+        "totalPages": 1
+      }
+    }
+  }
+  ```
+
+---
+
+### 14.2 Detail Email Outbox
+- **Endpoint:** `GET /api/admin/emails/:id`
+- **Hak Akses:** Admin
+- **Keamanan:** Mengembalikan metadata lengkap dan versi teks polos (`text`); konten HTML dihilangkan dari payload respons demi keamanan.
+- **Respons Berhasil (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Detail email outbox berhasil diambil",
+    "data": {
+      "_id": "672f00000000000000000001",
+      "type": "booking_created_admin",
+      "dedupeKey": "booking-created:672f000000000000000000aa:admin1@kalila.com",
+      "to": "a***1@kalila.com",
+      "originalTo": null,
+      "subject": "Pesanan baru KLA-20261112-001 - Dekor - 12 Nov 2026",
+      "text": "PESANAN BARU MASUK DARI WEBSITE...",
+      "replyTo": "kontak@kalila.com",
+      "status": "sent",
+      "attempts": 1,
+      "nextAttemptAt": "2026-11-12T08:00:00.000Z",
+      "lastError": null,
+      "provider": "resend",
+      "providerMessageId": "msg_abc123",
+      "sentAt": "2026-11-12T08:00:05.000Z",
+      "purgeAt": "2026-12-12T08:00:05.000Z",
+      "createdAt": "2026-11-12T08:00:00.000Z",
+      "updatedAt": "2026-11-12T08:00:05.000Z",
+      "booking": { ... }
+    }
+  }
+  ```
+
+---
+
+### 14.3 Coba Ulang Email Gagal (Retry)
+- **Endpoint:** `POST /api/admin/emails/:id/retry`
+- **Hak Akses:** Admin
+- **Aturan:** Hanya item berstatus `failed` yang diizinkan untuk di-retry. Status diubah kembali menjadi `pending`, hitungan `attempts` di-reset ke 0, dan `nextAttemptAt` diatur ke waktu sekarang. Jika email belum berstatus `failed`, endpoint mengembalikan `409 Conflict`.
+- **Respons Berhasil (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Email berhasil dijadwalkan ulang untuk dikirim",
+    "data": {
+      "_id": "672f00000000000000000001",
+      "status": "pending",
+      "attempts": 0,
+      "nextAttemptAt": "2026-11-12T09:30:00.000Z"
+    }
+  }
+  ```
+
+---
+
+### 14.4 Status Konfigurasi & Kuota Email
+- **Endpoint:** `GET /api/admin/emails/status`
+- **Hak Akses:** Admin
+- **Keamanan:** Tidak pernah membocorkan rahasia (`RESEND_API_KEY`) atau alamat email target redirect.
+- **Respons Berhasil (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Status konfigurasi email berhasil diambil",
+    "data": {
+      "provider": "resend",
+      "mode": "sandbox",
+      "ready": true,
+      "reason": null,
+      "emailFromDomain": "resend.dev",
+      "isRedirectActive": true,
+      "sentLast24Hours": 14,
+      "dailyLimit": 90,
+      "pendingCount": 2,
+      "failedCount": 0
+    }
+  }
+  ```
+
+---
+
+### 14.5 Kirim Email Pengujian
+- **Endpoint:** `POST /api/admin/emails/test`
+- **Hak Akses:** Admin (Dilindungi rate limiter: maksimal 5 kali pengiriman per jam per admin).
+- **Aturan:**
+  - Email pengujian **hanya** dikirim ke alamat email akun admin yang sedang login (`req.user.email`). Body request tidak menerima input alamat email untuk mencegah penyalahgunaan relay.
+  - Mematuhi aturan `EMAIL_REDIRECT_TO` bila aktif.
+  - Pada mode sandbox (domain `resend.dev`), respons mengingatkan bahwa pengujian hanya akan sampai ke email akun pemilik Resend.
+- **Respons Berhasil (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Email pengujian berhasil dikirim.",
+    "data": {
+      "provider": "resend",
+      "to": "a***n@kalila.com",
+      "messageId": "msg_test_12345",
+      "mode": "production"
+    }
+  }
+  ```
+
+---
+
+## 15. Variabel Lingkungan & Panduan Setup Resend
+
+### 15.1 Variabel Lingkungan Email
+Konfigurasikan variabel berikut pada file `.env` di backend:
+
+| Variabel | Tipe / Nilai | Keterangan |
+|---|---|---|
+| `EMAIL_PROVIDER` | `resend` \| `log` \| `memory` | Provider pengiriman. Default: `log`. Pada `NODE_ENV=production`, hanya `resend` yang diizinkan. |
+| `RESEND_API_KEY` | String (contoh: `re_123...`) | API Key dari dashboard Resend. Jangan pernah dicetak di log. |
+| `EMAIL_FROM` | String | Format nama dan email pengirim, misal: `Kalila Organizer <noreply@domain.com>` |
+| `EMAIL_REPLY_TO` | String (opsional) | Alamat balasan default bila pelanggan menekan reply. |
+| `EMAIL_REDIRECT_TO` | String (opsional) | Alamat pengalihan semua email keluar (hanya untuk mode uji/pengembangan). Bila diisi, subject otomatis diawali `[UJI]`. |
+| `EMAIL_DAILY_LIMIT` | Number (default: `90`) | Batas maksimal email terkirim dalam 24 jam terakhir (paket gratis Resend: 100/hari). |
+| `EMAIL_BATCH_PER_TICK`| Number (default: `5`) | Jumlah maksimal antrean pending yang diproses per menit oleh job cron. |
+| `APP_PUBLIC_URL` | URL | URL dasar web publik pelanggan (contoh: `https://kalilaorganizer.com`). |
+| `APP_ADMIN_URL` | URL | URL dasar web admin (contoh: `https://kalilaorganizer.com/admin`). |
+
+> [!NOTE]
+> **Catatan Penyelarasan Frontend:**
+> Pola URL tautan email yang dikonfigurasi pada `src/config/emailLinks.js` (`/orders/:id`, `/payments`) adalah asumsi awal dan wajib diselaraskan dengan struktur rute aplikasi Frontend Vue saat integrasi tampilan email dilakukan.
+
+---
+
+### 15.2 Panduan Dua Fase Setup Resend
+
+#### Fase A: Sebelum Domain Kalila Ada (Pengembangan & Uji Coba)
+1. **Opsi 1 (Disarankan untuk dev lokal):** Atur `EMAIL_PROVIDER=log`. Semua notifikasi email outbox diproses secara instan dan dicatat ringkasannya ke konsol server tanpa memakan kuota Resend.
+2. **Opsi 2 (Uji coba kirim nyata Resend):**
+   - Buat akun gratis di [resend.com](https://resend.com) dan buat API Key.
+   - Atur `.env`:
+     ```env
+     EMAIL_PROVIDER=resend
+     RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxx
+     EMAIL_FROM=Kalila Organizer <onboarding@resend.dev>
+     EMAIL_REDIRECT_TO=email_akun_resend_anda@gmail.com
+     ```
+   - *Penting:* Pada mode sandbox (`resend.dev`), Resend **hanya** mengizinkan pengiriman ke alamat email akun terdaftar Anda. Pengalihan via `EMAIL_REDIRECT_TO` menjamin tidak ada error 403 saat simulasi pengiriman ke pelanggan/admin lain.
+
+#### Fase B: Setelah Domain Kalila Ada (Produksi)
+1. Buka dashboard Resend > **Domains** > **Add Domain** (masukkan domain Kalila, misal `kalilaorganizer.com`).
+2. Masuk ke DNS Manager domain Anda (Cloudflare, cPanel, dll.) dan salin catatan DNS yang diberikan oleh Resend:
+   - Catatan **SPF** (TXT)
+   - Catatan **DKIM** (CNAME / TXT)
+3. Tekan **Verify** di dashboard Resend hingga status domain berubah menjadi **Verified**.
+4. Perbarui variabel `.env` di server produksi:
+   ```env
+   NODE_ENV=production
+   EMAIL_PROVIDER=resend
+   RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxx
+   EMAIL_FROM=Kalila Wedding & Organizer <noreply@kalilaorganizer.com>
+   EMAIL_REPLY_TO=kontak@kalilaorganizer.com
+   EMAIL_REDIRECT_TO=
+   ```
+   *(Pastikan `EMAIL_REDIRECT_TO` dihapus/dikosongkan agar email benar-benar terkirim ke masing-masing pelanggan, admin, dan owner).*
+5. Buka dashboard admin dan uji coba koneksi melalui tombol uji di menu pengaturan email atau `POST /api/admin/emails/test`.
+
 
 
 

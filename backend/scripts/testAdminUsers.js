@@ -422,12 +422,13 @@ async function runAdminUserTests() {
 
       const statuses = [resA.status, resB.status];
       const successCount = statuses.filter((s) => s === 200).length;
-      const conflictCount = statuses.filter((s) => s === 409).length;
+      // Permintaan kedua ditolak 409 (admin terakhir) atau 401 (bila akunnya sudah dinonaktifkan oleh request pertama)
+      const rejectedCount = statuses.filter((s) => s === 409 || s === 401).length;
 
       const activeAfter = await User.countDocuments({ role: 'admin', isActive: true });
 
-      // Verifikasi: tepat satu berhasil (200), satu gagal (409), dan minimal 1 admin tetap aktif
-      if (successCount !== 1 || conflictCount !== 1 || activeAfter < 1) {
+      // Verifikasi: tepat satu berhasil (200), satu ditolak (409 atau 401), dan minimal 1 admin tetap aktif
+      if (successCount !== 1 || rejectedCount !== 1 || activeAfter < 1) {
         throw new Error(
           `Putaran ${round} GAGAL: status=${JSON.stringify(statuses)}, activeAfter=${activeAfter}`
         );

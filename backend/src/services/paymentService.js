@@ -5,6 +5,11 @@ const Booking = require('../models/Booking');
 const Setting = require('../models/Setting');
 const { isDateAvailable, getMonthAvailability } = require('./availabilityService');
 const { withSlotLock } = require('./slotService');
+const { getEffectiveRecipients } = require('./email/recipientService');
+const {
+  triggerPaymentProofEmail,
+  triggerBookingConfirmedEmail,
+} = require('./email/emailService');
 const {
   isCloudinaryConfigured,
   uploadAuthenticatedStream,
@@ -162,6 +167,9 @@ async function uploadPaymentProof(bookingId, file, userId) {
 
   const publicId = uploadResult.public_id;
 
+  // Cari daftar penerima admin sebelum memulai transaksi
+  const { adminEmails } = await getEffectiveRecipients(settings);
+
   // Jalankan dalam MongoDB transaction dengan update bersyarat atomik
   try {
     const result = await mongoose.connection.transaction(async (session) => {
@@ -211,6 +219,15 @@ async function uploadPaymentProof(bookingId, file, userId) {
             },
           },
         ],
+        { session }
+      );
+
+      // Enqueue notifikasi email bukti transfer ke admin di dalam transaksi yang sama
+      await triggerPaymentProofEmail(
+        updatedBooking,
+        payment,
+        adminEmails,
+        settings,
         { session }
       );
 
@@ -602,6 +619,11 @@ async function approvePayment(paymentId, adminId) {
     if (!updatedBooking) {
       throw new AppError('Status pesanan telah diubah oleh proses lain', 409);
     }
+
+    const settings = await Setting.getSettings({ session });
+
+    // Enqueue notifikasi email konfirmasi ke pelanggan di dalam transaction
+    await triggerBookingConfirmedEmail(updatedBooking, settings, { session });
 
     return {
       payment: updatedPayment,

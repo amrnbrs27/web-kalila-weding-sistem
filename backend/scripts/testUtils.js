@@ -16,6 +16,7 @@ const SlotLock = require('../src/models/SlotLock');
 const Setting = require('../src/models/Setting');
 const Portfolio = require('../src/models/Portfolio');
 const AdminLock = require('../src/models/AdminLock');
+const EmailOutbox = require('../src/models/EmailOutbox');
 const cloudinary = require('../src/config/cloudinary');
 
 // Koleksi pelacak data uji
@@ -28,6 +29,7 @@ const tracked = {
   slotLocks: new Set(),
   portfolios: new Set(),
   adminLocks: new Set(),
+  emails: new Set(),
   cloudinaryPublicIds: new Set(),
 };
 
@@ -130,6 +132,10 @@ function trackPortfolio(id) {
 function trackAdminLock(key) {
   if (key) tracked.adminLocks.add(key.toString());
 }
+function trackEmail(id) {
+  if (id) tracked.emails.add(id.toString());
+}
+
 function trackCloudinaryPublicId(publicId) {
   if (publicId) tracked.cloudinaryPublicIds.add(publicId);
 }
@@ -253,6 +259,7 @@ async function cleanTrackedData() {
     await CalendarBlock.deleteMany({ _id: { $in: Array.from(tracked.calendarBlocks) } });
   }
   if (tracked.bookings.size > 0) {
+    await Payment.deleteMany({ booking: { $in: Array.from(tracked.bookings) } });
     await Booking.deleteMany({ _id: { $in: Array.from(tracked.bookings) } });
   }
   if (tracked.payments.size > 0) {
@@ -274,6 +281,9 @@ async function cleanTrackedData() {
   }
   if (tracked.adminLocks.size > 0) {
     await AdminLock.deleteMany({ key: { $in: Array.from(tracked.adminLocks) } });
+  }
+  if (tracked.emails.size > 0) {
+    await EmailOutbox.deleteMany({ _id: { $in: Array.from(tracked.emails) } });
   }
 
   // Bersihkan aset Cloudinary yang terlacak (mendukung tipe upload biasa dan authenticated)
@@ -311,6 +321,7 @@ module.exports = {
   trackSlotLock,
   trackPortfolio,
   trackAdminLock,
+  trackEmail,
   trackCloudinaryPublicId,
   createTestAdmin,
   createTestCustomer,
