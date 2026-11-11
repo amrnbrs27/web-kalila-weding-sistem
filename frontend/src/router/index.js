@@ -13,6 +13,15 @@ const routes = [
     component: () => import("../views/CatalogView.vue"),
   },
   {
+    path: "/katalog/catering",
+    name: "catalog-catering",
+    component: () => import("../views/CateringView.vue"),
+  },
+  {
+    path: "/catering",
+    redirect: "/katalog/catering",
+  },
+  {
     path: "/katalog/:category",
     name: "catalog-category",
     component: () => import("../views/CatalogView.vue"),
