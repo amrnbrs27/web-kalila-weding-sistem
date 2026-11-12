@@ -108,6 +108,10 @@ paymentSchema.index({ booking: 1, type: 1 });
 paymentSchema.index({ status: 1, createdAt: 1 });
 paymentSchema.index({ type: 1, status: 1, createdAt: -1 });
 paymentSchema.index({ type: 1, status: 1, createdAt: 1 });
+// Indeks untuk query rentang Dashboard Keuangan (dasar kas WIB)
+paymentSchema.index({ status: 1, type: 1, paidAt: 1 });
+paymentSchema.index({ status: 1, paidAt: 1 });
+paymentSchema.index({ status: 1, verifiedAt: 1, paidAt: 1 });
 
 module.exports = mongoose.model('Payment', paymentSchema);
 

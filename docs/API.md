@@ -2137,3 +2137,273 @@ Konfigurasikan variabel berikut pada file `.env` di backend:
 
 
 
+
+---
+
+## 16. Modul Dashboard Keuangan Admin (`/api/admin/finance`)
+
+Seluruh endpoint pada modul ini bersifat **hanya-baca (read-only)** dan membutuhkan token admin (`Authorization: Bearer <token>` dengan role `admin`). Token tidak valid/tidak ada menghasilkan `401`, sedangkan token `customer` menghasilkan `403`. Parameter query divalidasi ketat dengan Zod `.strict()`; parameter yang tidak dikenal atau tidak valid mengembalikan `400`.
+
+### 16.1 Definisi Keuangan (Aturan Baku)
+- **Dasar kas:** Uang dihitung pada tanggal diterima atau dikembalikan, bukan pada tanggal acara (`eventDate`).
+- **Status pembayaran:** Hanya dokumen `Payment` berstatus `approved` yang masuk perhitungan arus kas. Status `pending`, `rejected`, dan `void` tidak dihitung (kecuali pada metrik informasi `pendingVerification` atau penelusuran dengan filter eksplisit pada `/transactions`).
+- **Tanggal transaksi:** Menggunakan `paidAt`; apabila `paidAt` kosong (`null`), menggunakan `verifiedAt`, lalu `createdAt`. Seluruh pengelompokan tanggal menggunakan zona waktu **WIB (`Asia/Jakarta`)**.
+- **Pemasukan kotor (`gross`):** Jumlah `Payment` berstatus `approved` bertipe `dp` dan `pelunasan`.
+- **Pengembalian (`refunds`):** Jumlah `Payment` berstatus `approved` bertipe `pengembalian`.
+- **Pemasukan bersih (`net`):** `gross - refunds`. DP yang tidak dikembalikan (hangus) tetap dihitung sebagai pemasukan.
+- **Kategori transaksi:** Mengikuti `category` pada dokumen `Booking` terkait (`dekor`, `catering`, atau `wedding`).
+- **Piutang (sisa tagihan):** Dihitung untuk `Booking` berstatus `terkonfirmasi`, `berlangsung`, atau `selesai` dengan `paymentStatus` bukan `lunas`:
+  - `total = totalPrice ?? packageSnapshot.price`
+  - `sisa = max(total - DP disetujui - pelunasan disetujui, 0)`
+  - Pesanan dengan `total === null` (belum ditetapkan) tidak masuk ke daftar `/outstanding`, melainkan dihitung terpisah pada `summary.outstanding.totalBelumDitetapkan`.
+- **Pembulatan:** Seluruh nominal berupa bilangan bulat rupiah. Persentase perubahan dibulatkan 1 angka desimal, dan bernilai `null` bila periode pembanding bernilai `0`.
+
+### 16.2 Konvensi Rentang Tanggal
+- Parameter `from` dan `to` berformat `"YYYY-MM-DD"` (WIB, inklusif dari `00:00:00.000 WIB` hingga `23:59:59.999 WIB`).
+- Default: awal bulan berjalan hingga hari ini (WIB). Bila hanya `to` yang diberikan untuk bulan lalu, `from` otomatis memakai tanggal 1 bulan dari `to`.
+- Validasi ketat: `from <= to`, tanggal kalender harus valid (mis. `2026-02-30` ditolak `400`), `to <= hari ini (WIB)`, dan rentang maksimal **366 hari**.
+
+---
+
+### 16.3 `GET /api/admin/finance/summary`
+Mengambil ringkasan arus kas periode berjalan vs periode pembanding, kategori, 5 paket teratas, piutang saat ini, dan antrean verifikasi DP.
+
+- **Query:** `from?`, `to?`
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Ringkasan keuangan berhasil diambil",
+  "data": {
+    "period": { "from": "2026-11-01", "to": "2026-11-12", "days": 12 },
+    "gross": 25000000,
+    "refunds": 1000000,
+    "net": 24000000,
+    "byType": { "dp": 5000000, "pelunasan": 20000000, "pengembalian": 1000000 },
+    "byCategory": {
+      "dekor": { "gross": 10000000, "refunds": 1000000, "net": 9000000 },
+      "catering": { "gross": 5000000, "refunds": 0, "net": 5000000 },
+      "wedding": { "gross": 10000000, "refunds": 0, "net": 10000000 }
+    },
+    "counts": { "payments": 8, "bookings": 5 },
+    "previous": {
+      "from": "2026-10-20",
+      "to": "2026-10-31",
+      "gross": 20000000,
+      "refunds": 0,
+      "net": 20000000
+    },
+    "change": { "net": 20.0, "gross": 25.0 },
+    "topPackages": [
+      { "packageName": "Wedding Gold", "gross": 10000000, "refunds": 0, "net": 10000000, "paymentsCount": 2 }
+    ],
+    "outstanding": {
+      "count": 4,
+      "amount": 18500000,
+      "overdueCount": 1,
+      "totalBelumDitetapkan": 1
+    },
+    "pendingVerification": { "count": 2, "amount": 2000000 }
+  }
+}
+```
+
+---
+
+### 16.4 `GET /api/admin/finance/chart`
+Menyediakan deret waktu arus kas per hari (`day`), per minggu dimulai Senin (`week`), atau per bulan (`month`). Bucket pertama/terakhir yang terpotong hanya menjumlahkan transaksi di dalam `[from, to]`.
+
+- **Query:** `from?`, `to?`, `groupBy` (`day` | `week` | `month`, default `day`), `breakdown` (`category` | `type`, default `category`)
+  - `breakdown=category`: berisi pemasukan **bersih** per bucket untuk `dekor`, `catering`, `wedding` (dapat bernilai negatif bila pengembalian lebih besar dari pemasukan).
+  - `breakdown=type`: berisi nilai **positif** per bucket untuk `dp`, `pelunasan`, `pengembalian`.
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Data grafik keuangan berhasil diambil",
+  "data": {
+    "from": "2026-11-01",
+    "to": "2026-11-03",
+    "groupBy": "day",
+    "breakdown": "category",
+    "labels": ["2026-11-01", "2026-11-02", "2026-11-03"],
+    "series": [
+      { "key": "dekor", "data": [1000000, 0, 5000000] },
+      { "key": "catering", "data": [0, 2000000, 0] },
+      { "key": "wedding", "data": [0, 0, -500000] }
+    ],
+    "totals": {
+      "dekor": 6000000,
+      "catering": 2000000,
+      "wedding": -500000,
+      "net": 7500000
+    }
+  }
+}
+```
+
+---
+
+### 16.5 `GET /api/admin/finance/transactions`
+Menampilkan daftar transaksi pembayaran berpaginasi beserta `totals` untuk **seluruh hasil filter** (bukan hanya halaman aktif). Tidak pernah mengembalikan `publicId`, URL bukti transfer, atau informasi rekening.
+
+- **Query:**
+  - `from?`, `to?`
+  - `type?` (`dp` | `pelunasan` | `pengembalian`)
+  - `category?` (`dekor` | `catering` | `wedding`)
+  - `method?` (`transfer` | `qris` | `tunai` | `lainnya`)
+  - `source?` (`customer` | `manual`)
+  - `status` (`approved` | `void` | `pending` | `rejected`, default `approved`)
+  - `q?` (pencarian teks pada nomor pesanan, nama pelanggan, atau nama paket; karakter regex di-escape aman)
+  - `page` (default `1`), `limit` (default `20`, maks `100`)
+  - `sort` (`terbaru` default | `terlama` | `nominal_besar` | `nominal_kecil`)
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Daftar transaksi keuangan berhasil diambil",
+  "data": {
+    "items": [
+      {
+        "id": "673000000000000000000001",
+        "bookingNumber": "KL-202611-ABCD",
+        "customerName": "Siti Aminah",
+        "category": "wedding",
+        "packageName": "Wedding Gold",
+        "type": "dp",
+        "direction": "masuk",
+        "amount": 1000000,
+        "method": "transfer",
+        "paidAt": "2026-11-12T03:00:00.000Z",
+        "source": "customer",
+        "status": "approved",
+        "verifiedByName": "Admin Kalila",
+        "note": ""
+      }
+    ],
+    "pagination": { "page": 1, "limit": 20, "total": 1, "totalPages": 1 },
+    "totals": { "masuk": 1000000, "keluar": 0, "net": 1000000, "count": 1 },
+    "filters": {
+      "from": "2026-11-01",
+      "to": "2026-11-12",
+      "type": null,
+      "category": null,
+      "method": null,
+      "source": null,
+      "status": "approved",
+      "q": "",
+      "sort": "terbaru"
+    }
+  }
+}
+```
+
+---
+
+### 16.6 `GET /api/admin/finance/recap`
+Rekapitulasi pendapatan bulanan (12 baris Januari–Desember) atau tahunan (rentang hingga 10 tahun).
+
+- **Query:**
+  - `groupBy` (`month` | `year`, default `month`)
+  - Untuk `month`: `year` (`2000 .. tahun berjalan WIB`, default tahun ini)
+  - Untuk `year`: `fromYear`, `toYear` (default 3 tahun terakhir; rentang maks 10 tahun; `fromYear <= toYear`)
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Rekapitulasi keuangan berhasil diambil",
+  "data": {
+    "groupBy": "month",
+    "year": 2026,
+    "rows": [
+      {
+        "label": "Januari",
+        "month": 1,
+        "period": "2026-01",
+        "gross": 5000000,
+        "refunds": 0,
+        "net": 5000000,
+        "byCategory": { "dekor": 5000000, "catering": 0, "wedding": 0 },
+        "counts": { "payments": 2 }
+      }
+    ],
+    "totals": {
+      "gross": 5000000,
+      "refunds": 0,
+      "net": 5000000,
+      "byCategory": { "dekor": 5000000, "catering": 0, "wedding": 0 },
+      "counts": { "payments": 2 }
+    }
+  }
+}
+```
+
+---
+
+### 16.7 `GET /api/admin/finance/outstanding`
+Daftar pesanan aktif/selesai (`terkonfirmasi`, `berlangsung`, `selesai`) yang memiliki sisa tagihan `> 0`. Pesanan tanpa total harga (`total === null`) tidak muncul di daftar ini tetapi tetap dihitung pada `summary.outstanding.totalBelumDitetapkan`.
+
+- **Query:** `page` (default `1`), `limit` (default `20`, maks `100`), `overdueOnly` (boolean, default `false`), `sort` (`acara_terdekat` default | `sisa_terbesar`)
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Daftar pesanan belum lunas berhasil diambil",
+  "data": {
+    "items": [
+      {
+        "id": "673000000000000000000010",
+        "bookingNumber": "KL-202611-XY12",
+        "customerName": "Budi Santoso",
+        "customerPhone": "081234567890",
+        "category": "dekor",
+        "packageName": "Dekor Minimalis",
+        "eventDate": "2026-11-10",
+        "total": 5000000,
+        "dpPaid": 1000000,
+        "remaining": 4000000,
+        "overdue": true,
+        "daysUntil": -2
+      }
+    ],
+    "pagination": { "page": 1, "limit": 20, "total": 1, "totalPages": 1 }
+  }
+}
+```
+
+---
+
+### 16.8 `GET /api/admin/finance/export`
+Mengunduh laporan keuangan dalam format berkas `.xlsx` (`exceljs`) atau `.pdf` (`pdfkit`, streaming langsung).
+
+- **Query wajib:**
+  - `report`: `"recap"` atau `"transactions"`
+  - `format`: `"pdf"` atau `"xlsx"`
+- **Query opsional (menyesuaikan `report`):**
+  - Jika `report=recap`: `groupBy`, `year`, `fromYear`, `toYear`
+  - Jika `report=transactions`: `from`, `to`, `type`, `category`, `method`, `source`, `status`, `q`, `sort`
+- **Keamanan, Batas & Header Respons:**
+  - `Content-Type`: `application/pdf` atau `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+  - `Content-Disposition`: `attachment; filename="<nama-aman-server>.(pdf|xlsx)"`
+  - `Cache-Control`: `no-store`
+  - `X-Content-Type-Options`: `nosniff`
+  - **Batas baris (`transactions`):** Maksimal **2.000 baris** untuk `pdf` dan **20.000 baris** untuk `xlsx` (diperiksa sebelum pembuatan berkas; bila melebihi mengembalikan `400`).
+  - **Rate limit:** Maksimal `FINANCE_EXPORT_MAX` (default `10`) permintaan ekspor per **10 menit per akun admin**; melebihi batas mengembalikan `429`. Catatan hosting: atur `app.set('trust proxy', ...)` bila berada di belakang proxy, dan penyimpanan hitungan berada di memori server (hilang saat restart serta tidak dibagi antar-instance).
+  - **Keamanan spreadsheet:** Semua sel teks dari data pelanggan/pesanan disanitasi agar tidak pernah dievaluasi sebagai rumus Excel (`=`, `+`, `-`, `@`, dll.), dan berkas ekspor tidak menyertakan email, nomor rekening, QRIS, `publicId`, atau URL bukti transfer.
+- **Catatan Penting untuk Frontend (Unduhan dengan Token JWT):**
+  Karena endpoint ini membutuhkan header `Authorization: Bearer <token>`, **jangan gunakan tautan langsung** (`<a href="/api/admin/finance/export?...">` atau `window.open(...)`) karena browser tidak menyertakan header `Authorization`. Ambil berkas sebagai `Blob` melalui `fetch` / `axios`, lalu picu unduhan secara programatis:
+  ```javascript
+  const res = await fetch(`/api/admin/finance/export?report=transactions&format=xlsx&from=2026-11-01&to=2026-11-12`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error('Gagal mengunduh laporan');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'laporan-transaksi.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  ```
