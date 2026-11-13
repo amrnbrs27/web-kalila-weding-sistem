@@ -2407,3 +2407,512 @@ Mengunduh laporan keuangan dalam format berkas `.xlsx` (`exceljs`) atau `.pdf` (
   a.remove();
   URL.revokeObjectURL(url);
   ```
+
+---
+
+## 17. Modul Blog & Pengelolaan Artikel (`/api/posts` & `/api/admin/posts`)
+
+Modul Blog melayani penyajian artikel edukasi dan promosi untuk publik serta antarmuka pengelolaan artikel oleh admin.
+
+### 17.1 Aturan Bisnis & Keamanan Artikel
+1. **Status Artikel:**
+   - Hanya memiliki dua status: `draft` dan `published` (tanpa penjadwalan).
+   - Artikel baru yang dibuat admin selalu berstatus `draft`.
+   - Artikel hanya dapat diterbitkan (`published`) melalui endpoint `PATCH /:id/status` jika memiliki `title` dan isi teks polos artikel minimal **20 karakter**.
+   - `publishedAt` dicatat saat artikel pertama kali diterbitkan dan **tidak berubah** jika status diturunkan ke `draft` lalu diterbitkan kembali.
+2. **Aturan Slug:**
+   - Dibuat otomatis dari judul artikel (`slugify` huruf kecil, tanda strip, tanpa karakter khusus).
+   - Kata `"tags"` dicadangkan (reserved) agar tidak bentrok dengan rute `/api/posts/tags`; jika judul menghasilkan slug `"tags"`, otomatis dialihkan ke `"tags-2"`.
+   - Bentrok slug ditangani dengan suffix angka berurutan (`-2`, `-3`, dst.).
+   - Slug diperbarui saat judul berubah **hanya selama artikel belum pernah terbit** (`publishedAt` masih `null`). Setelah artikel pernah terbit, slug terkunci permanen demi menjaga SEO dan permalink.
+3. **Sanitasi HTML (Keamanan Backend):**
+   - Isi artikel (`content`) disimpan dalam bentuk HTML yang **wajib disanitasi ketat** di backend menggunakan paket `sanitize-html` sebelum disimpan ke database (POST dan PUT).
+   - **Tag yang diizinkan:** `p`, `br`, `h2`, `h3`, `h4`, `strong`, `em`, `u`, `s`, `blockquote`, `ul`, `ol`, `li`, `a`, `img`, `figure`, `figcaption`, `hr`, `code`, `pre`.
+   - Tag berbahaya (`script`, `style`, `iframe`, `svg`, `form`, `input`, dsb.) dibuang beserta isinya.
+   - Atribut berbahaya (`style`, `class`, `id`, `srcset`, `on*`) dibuang seluruhnya.
+   - **Tautan (`<a>`):** Hanya protokol `http`, `https`, `mailto`, `tel`. Semua tautan otomatis ditambahkan atribut `target="_blank"` dan `rel="noopener noreferrer"`. Protokol `javascript:`, `data:`, `vbscript:` ditolak total.
+   - **Gambar (`<img>`):** Hanya diizinkan jika atribut `src` mengarah ke akun Cloudinary Kalila (`https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/...`). Gambar dari domain eksternal lain dibuang. Atribut `width` dan `height` hanya menerima angka bulat 1–4000.
+   - **Kolom Teks Biasa:** Kolom `title`, `excerpt`, `metaDescription`, `authorName`, dan `tags` dibersihkan dari seluruh tag HTML sebelum disimpan (`allowedTags: []`).
+   - **Ringkasan Otomatis (`excerpt`):** Jika `excerpt` dikosongkan oleh admin, sistem secara otomatis mengekstrak sekitar 200 karakter teks polos pertama yang dipotong rapi pada batas kata dan diakhiri `...`.
+   - **Waktu Baca (`readingTimeMinutes`):** Dihitung otomatis dari estimasi 200 kata teks polos per menit, minimal 1 menit.
+4. **Batas Ukuran Body:**
+   - Endpoint `POST /api/admin/posts` dan `PUT /api/admin/posts/:id` mendukung body JSON hingga **300 KB** untuk mengakomodasi teks artikel hingga 200.000 karakter, sedangkan parser global untuk rute lain tetap pada batas default (100 KB). Payload yang melebihi batas mengembalikan status `413` dengan pesan berbahasa Indonesia.
+5. **Pengelolaan Gambar Cloudinary:**
+   - Gambar sampul (`cover`) dan gambar isi artikel (`contentImages`) disimpan di Cloudinary pada folder `"kalila/blog"`.
+   - Gambar isi artikel dibatasi maksimal **30 gambar** per artikel.
+   - Menghapus artikel akan menghapus seluruh aset gambar Cloudinary terkait secara otomatis.
+
+---
+
+### 17.2 Endpoint Blog Publik
+
+#### 17.2.1 `GET /api/posts`
+Mengambil daftar ringkas artikel yang berstatus `published`.
+
+- **Autentikasi:** Publik (tanpa token).
+- **Query Parameter:**
+  - `q` (string, opsional, maks 100): Mencari kata kunci pada judul, ringkasan, atau tag. Karakter regex di-escape aman.
+  - `tag` (string, opsional): Memfilter artikel berdasarkan tag spesifik.
+  - `page` (number, default `1`, min `1`): Nomor halaman.
+  - `limit` (number, default `12`, min `1`, maks `50`): Jumlah artikel per halaman (di atas 50 mengembalikan 400).
+  - `sort` (enum: `'terbaru'` | `'terlama'`, default `'terbaru'`): Urutan berdasarkan `publishedAt`.
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Daftar artikel berhasil diambil",
+  "data": {
+    "items": [
+      {
+        "slug": "tips-memilih-dekorasi-pernikahan-outdoor",
+        "title": "Tips Memilih Dekorasi Pernikahan Outdoor",
+        "excerpt": "Panduan lengkap memilih konsep pelaminan dan tenda untuk pernikahan bertema kebun yang elegan...",
+        "cover": "https://res.cloudinary.com/kalila/image/upload/v12345/kalila/blog/cover1.webp",
+        "tags": ["dekorasi", "outdoor", "tips"],
+        "publishedAt": "2026-11-10T08:00:00.000Z",
+        "readingTimeMinutes": 3,
+        "authorName": "Admin Kalila"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 12,
+      "total": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+*(Catatan: Respons publik tidak pernah memuat `publicId`, `createdBy`, `status`, atau ID internal).*
+
+---
+
+#### 17.2.2 `GET /api/posts/tags`
+Mengambil daftar seluruh tag dari artikel yang telah terbit beserta frekuensinya.
+
+- **Autentikasi:** Publik (tanpa token).
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Daftar tag artikel berhasil diambil",
+  "data": [
+    { "tag": "dekorasi", "count": 5 },
+    { "tag": "catering", "count": 3 },
+    { "tag": "tips", "count": 2 }
+  ]
+}
+```
+
+---
+
+#### 17.2.3 `GET /api/posts/:slug`
+Mengambil detail artikel terbit berdasarkan slug.
+
+- **Autentikasi:** Publik (tanpa token).
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Detail artikel berhasil diambil",
+  "data": {
+    "slug": "tips-memilih-dekorasi-pernikahan-outdoor",
+    "title": "Tips Memilih Dekorasi Pernikahan Outdoor",
+    "content": "<p>Menyiapkan pernikahan outdoor membutuhkan perencanaan matang...</p>",
+    "excerpt": "Panduan lengkap memilih konsep pelaminan...",
+    "metaDescription": "Tips praktis memilih dekorasi pernikahan kebun outdoor.",
+    "cover": "https://res.cloudinary.com/kalila/image/upload/v12345/kalila/blog/cover1.webp",
+    "tags": ["dekorasi", "outdoor"],
+    "publishedAt": "2026-11-10T08:00:00.000Z",
+    "updatedAt": "2026-11-11T09:30:00.000Z",
+    "readingTimeMinutes": 3,
+    "authorName": "Kalila Wedding, Dekor & Catering"
+  }
+}
+```
+- **Error `404 Not Found`:** Bila artikel tidak ditemukan atau berstatus `draft`.
+
+---
+
+### 17.3 Endpoint Pengelolaan Blog Admin (`/api/admin/posts`)
+
+Seluruh endpoint di bawah ini membutuhkan header `Authorization: Bearer <token>` milik akun berstatus **admin**.
+
+#### 17.3.1 `GET /api/admin/posts`
+Mengambil daftar artikel untuk admin (mencakup artikel `draft` dan `published`).
+
+- **Query Parameter:**
+  - `status` (`'draft'` | `'published'`, opsional)
+  - `tag` (string, opsional)
+  - `q` (string, opsional)
+  - `page` (number, default `1`)
+  - `limit` (number, default `10`, maks `100`)
+  - `sort` (`'terbaru'` | `'terlama'` | `'judul'`, default `'terbaru'`)
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Daftar artikel admin berhasil diambil",
+  "data": {
+    "items": [
+      {
+        "id": "673000000000000000000001",
+        "title": "Tips Memilih Dekorasi Pernikahan",
+        "slug": "tips-memilih-dekorasi-pernikahan",
+        "status": "draft",
+        "excerpt": "Panduan lengkap...",
+        "cover": "https://res.cloudinary.com/...",
+        "tags": ["dekorasi"],
+        "authorName": "Admin Kalila",
+        "publishedAt": null,
+        "createdAt": "2026-11-13T01:00:00.000Z",
+        "updatedAt": "2026-11-13T01:00:00.000Z",
+        "readingTimeMinutes": 2,
+        "imagesCount": 2,
+        "createdBy": {
+          "id": "672000000000000000000001",
+          "name": "Admin Utama"
+        }
+      }
+    ],
+    "pagination": { "page": 1, "limit": 10, "total": 1, "totalPages": 1 }
+  }
+}
+```
+
+---
+
+#### 17.3.2 `GET /api/admin/posts/:id`
+Mengambil detail lengkap artikel untuk penyuntingan atau pratinjau draft.
+
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Detail artikel admin berhasil diambil",
+  "data": {
+    "id": "673000000000000000000001",
+    "title": "Tips Memilih Dekorasi Pernikahan",
+    "slug": "tips-memilih-dekorasi-pernikahan",
+    "status": "draft",
+    "content": "<p>Isi artikel lengkap tersanitasi...</p>",
+    "excerpt": "Ringkasan artikel...",
+    "metaDescription": "Meta deskripsi...",
+    "coverImage": { "url": "https://res.cloudinary.com/..." },
+    "contentImages": [
+      { "_id": "6730000000000000000000aa", "url": "https://res.cloudinary.com/..." }
+    ],
+    "tags": ["dekorasi"],
+    "authorName": "Admin Kalila",
+    "publishedAt": null,
+    "createdAt": "2026-11-13T01:00:00.000Z",
+    "updatedAt": "2026-11-13T01:00:00.000Z",
+    "readingTimeMinutes": 2,
+    "createdBy": { "id": "672000000000000000000001", "name": "Admin Utama" }
+  }
+}
+```
+
+---
+
+#### 17.3.3 `POST /api/admin/posts`
+Membuat draft artikel baru (selalu status `draft`; unggah gambar dilakukan lewat endpoint terpisah).
+
+- **Request Body (JSON, maks 300 KB):**
+```json
+{
+  "title": "Panduan Memilih Menu Catering Wedding",
+  "content": "<p>Pemilihan menu catering memegang peranan krusial dalam kenyamanan para tamu undangan...</p>",
+  "excerpt": "Ringkasan opsional (jika kosong akan dibuat otomatis)...",
+  "metaDescription": "Tips catering pernikahan.",
+  "authorName": "Chef Kalila",
+  "tags": ["catering", "wedding"]
+}
+```
+- **Respons `201 Created`:** Mengembalikan objek detail artikel berstatus `draft`.
+
+---
+
+#### 17.3.4 `PUT /api/admin/posts/:id`
+Memperbarui data artikel. Jika judul diubah saat artikel belum pernah terbit, slug akan diperbarui otomatis. Jika artikel sudah pernah terbit, slug tetap dipertahankan.
+
+- **Request Body (JSON, maks 300 KB):** Field yang ingin diperbarui (`title`, `content`, `excerpt`, `metaDescription`, `authorName`, `tags`).
+- **Respons `200 OK`:** Mengembalikan detail artikel yang telah diperbarui dan disanitasi.
+
+---
+
+#### 17.3.5 `PATCH /api/admin/posts/:id/status`
+Mengubah status publikasi artikel.
+
+- **Request Body:**
+```json
+{
+  "status": "published"
+}
+```
+- **Aturan Publikasi:**
+  - `title` wajib ada dan teks polos `content` minimal 20 karakter (jika tidak memenuhi, ditolak dengan `400 Bad Request`).
+  - Publikasi pertama kali akan menetapkan tanggal `publishedAt`.
+  - Mengubah status ke `draft` dan menerbitkan kembali tetap mempertahankan nilai `publishedAt` pertama.
+  - Bersifat idempoten dan aman dari balapan (race condition).
+- **Respons `200 OK`:** Mengembalikan detail artikel dengan status terbaru.
+
+---
+
+#### 17.3.6 `DELETE /api/admin/posts/:id`
+Menghapus artikel beserta seluruh aset gambarnya (cover dan seluruh gambar isi) di Cloudinary.
+
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Artikel berhasil dihapus",
+  "data": { "id": "673000000000000000000001", "title": "Panduan Memilih Menu Catering Wedding" }
+}
+```
+
+---
+
+#### 17.3.7 `POST /api/admin/posts/:id/cover`
+Mengunggah atau mengganti gambar sampul artikel (`form-data` dengan key `'image'`). Jika sudah ada gambar sampul lama, aset lama otomatis dihapus dari Cloudinary.
+
+- **Request:** `multipart/form-data` (file maksimal 5 MB, format JPG/PNG/WEBP).
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Gambar sampul artikel berhasil diunggah",
+  "data": { "url": "https://res.cloudinary.com/kalila/image/upload/v12345/kalila/blog/cover-new.webp" }
+}
+```
+
+---
+
+#### 17.3.8 `DELETE /api/admin/posts/:id/cover`
+Menghapus gambar sampul artikel dari database dan Cloudinary.
+
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Gambar sampul artikel berhasil dihapus"
+}
+```
+
+---
+
+#### 17.3.9 `POST /api/admin/posts/:id/images`
+Mengunggah 1 sampai 5 gambar isi artikel (`form-data` dengan key `'images'`). Total gambar isi per artikel maksimal 30 gambar.
+
+- **Request:** `multipart/form-data` (1–5 file, maks 5 MB per gambar).
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Gambar isi artikel berhasil diunggah",
+  "data": [
+    {
+      "_id": "6730000000000000000000b1",
+      "url": "https://res.cloudinary.com/kalila/image/upload/v12345/kalila/blog/content-1.webp"
+    }
+  ]
+}
+```
+*(Frontend dapat menyisipkan tag `<img src="...">` ke dalam editor artikel menggunakan URL yang dikembalikan).*
+
+---
+
+#### 17.3.10 `DELETE /api/admin/posts/:id/images/:imageId`
+Menghapus satu gambar isi artikel dari database dan Cloudinary berdasarkan subdocument `_id`.
+
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Gambar isi artikel berhasil dihapus"
+}
+```
+
+---
+
+### 17.4 Petunjuk Integrasi untuk Frontend (Vue)
+1. **Alur Pembuatan Artikel:** Buat draft artikel terlebih dahulu (`POST /api/admin/posts`), kemudian gunakan ID artikel yang diperoleh untuk mengunggah gambar sampul (`POST /:id/cover`) dan gambar isi (`POST /:id/images`).
+2. **Editor Teks Kaya (Rich Text Editor):** Gunakan editor yang menghasilkan HTML murni (seperti Tiptap, Quill, atau TinyMCE), bukan format Markdown.
+3. **Penyisipan Gambar ke Isi:** Saat admin menyisipkan gambar ke dalam artikel, gunakan URL yang diperoleh dari endpoint `POST /:id/images` pada tag `<img src="URL" alt="..." />`.
+4. **Perenderaan dengan `v-html`:**
+   - HANYA kolom `content` yang dirender menggunakan `v-html` pada halaman baca artikel publik karena telah melalui sanitasi ketat di backend.
+   - Kolom `title`, `excerpt`, `metaDescription`, dan `authorName` **wajib** dirender sebagai teks biasa (interpolasi `{{ ... }}` atau `v-text`), bukan `v-html`.
+5. **Kebijakan Gambar Yatim:** Gambar isi yang dihapus dari teks artikel tetapi belum dihapus dari daftar `contentImages` akan tetap tersimpan hingga admin menghapusnya secara eksplisit lewat tombol kelola media atau saat artikel tersebut dihapus total.
+
+---
+
+## 18. Modul Autentikasi: Reset Password dengan OTP Email (`/api/auth`)
+
+Fitur pemulihan kata sandi pelanggan yang lupa password melalui kode OTP 6 angka acak kriptografis yang dikirimkan ke alamat email terdaftar.
+
+### 18.1 Alur Tiga Langkah (Three-Step Flow)
+1. **Langkah 1 (Minta OTP):** Pelanggan memasukkan email pada form lupa password. Sistem merespons seragam dan mengirim email berisi kode OTP 6 angka yang berlaku selama 10 menit (konfigurasi).
+2. **Langkah 2 (Verifikasi OTP):** Pelanggan memasukkan kode OTP 6 digit. Jika benar, sistem menghasilkan token reset sekali pakai (`resetToken`) berumur pendek.
+3. **Langkah 3 (Atur Password Baru):** Pelanggan memasukkan token reset dan password baru. Sistem memperbarui password dalam transaksi database, membatalkan seluruh token JWT login lama via `passwordChangedAt`, dan mengarahkan pelanggan ke halaman login (tidak login otomatis).
+
+---
+
+### 18.2 Endpoint Publik
+
+#### 18.2.1 `POST /api/auth/forgot-password`
+Mengajukan permohonan reset password dan meminta pengiriman kode OTP.
+
+- **Rate Limit:** 10 permintaan per 15 menit per IP (dapat diatur lewat `RESET_FORGOT_IP_MAX`).
+- **Request Body (`application/json`, strict):**
+```json
+{
+  "email": "pelanggan@example.com"
+}
+```
+- **Respons `200 OK` (Selalu Seragam):**
+```json
+{
+  "success": true,
+  "message": "Jika email terdaftar, kode OTP telah dikirim.",
+  "data": {
+    "expiresInMinutes": 10,
+    "resendAfterSeconds": 60
+  }
+}
+```
+*(Catatan Keamanan: Respons selalu 200 identik dengan nilai data konfigurasi, baik email terdaftar, tidak terdaftar, nonaktif, akun admin, maupun terkena cooldown, agar keberadaan akun tidak dapat ditebak).*
+
+- **Kemungkinan Kesalahan:**
+  - `400 Bad Request`: Format email tidak valid atau terdapat field asing.
+  - `429 Too Many Requests`: Terlalu banyak permintaan dari IP yang sama.
+  - `503 Service Unavailable`: Fitur reset password belum dikonfigurasi (`OTP_HMAC_SECRET` belum diisi/kurang dari 32 karakter).
+
+---
+
+#### 18.2.2 `POST /api/auth/verify-reset-otp`
+Memverifikasi 6 digit kode OTP dan menukarnya dengan token reset password sekali pakai.
+
+- **Rate Limit:**
+  - 30 permintaan per 15 menit per IP (`RESET_VERIFY_IP_MAX`).
+  - 10 percobaan per 15 menit per kunci hash email (`RESET_VERIFY_EMAIL_MAX`).
+- **Request Body (`application/json`, strict):**
+```json
+{
+  "email": "pelanggan@example.com",
+  "otp": "482910"
+}
+```
+- **Respons `200 OK` (OTP Benar):**
+```json
+{
+  "success": true,
+  "message": "Kode OTP berhasil diverifikasi",
+  "data": {
+    "resetToken": "A9k2Lm...base64url...",
+    "expiresInMinutes": 10
+  }
+}
+```
+- **Kemungkinan Kesalahan:**
+  - `400 Bad Request`:
+    - Format OTP bukan 6 digit angka: `"Kode OTP harus berupa 6 digit angka"`.
+    - OTP salah, kedaluwarsa, sudah digunakan, email tidak terdaftar, akun tidak berhak, atau batas percobaan habis:
+      ```json
+      {
+        "success": false,
+        "message": "Kode OTP salah atau sudah kedaluwarsa."
+      }
+      ```
+  - `429 Too Many Requests`: Terlalu banyak percobaan verifikasi.
+  - `503 Service Unavailable`: Fitur reset password belum dikonfigurasi.
+
+---
+
+#### 18.2.3 `POST /api/auth/reset-password`
+Menetapkan password baru menggunakan token reset yang valid.
+
+- **Rate Limit:** 10 permintaan per 15 menit per IP (`RESET_PASSWORD_IP_MAX`).
+- **Request Body (`application/json`, strict):**
+```json
+{
+  "resetToken": "A9k2Lm...base64url...",
+  "newPassword": "PasswordBaru123!"
+}
+```
+- **Kebijakan Password (`newPassword`):**
+  - Minimal 8 karakter dan maksimal 72 byte.
+  - Wajib mengandung minimal 1 huruf (`[a-zA-Z]`) dan minimal 1 angka (`[0-9]`).
+  - Tidak boleh sama dengan email pemilik akun.
+  - Tidak boleh sama dengan password lama akun tersebut.
+  - *Catatan: Pelanggaran kebijakan password mengembalikan 400 dan token reset TIDAK dihanguskan (tetap dapat dipakai ulang).*
+- **Respons `200 OK` (Sukses):**
+```json
+{
+  "success": true,
+  "message": "Password berhasil diubah. Silakan masuk dengan password baru."
+}
+```
+*(Catatan: Respons TIDAK menyertakan token JWT login. Pelanggan wajib diarahkan ke halaman login).*
+
+- **Kemungkinan Kesalahan:**
+  - `400 Bad Request`:
+    - Token reset tidak valid, kedaluwarsa, atau sudah digunakan: `"Token reset tidak valid atau sudah kedaluwarsa."`
+    - Password melanggar kebijakan: `"Password minimal 8 karakter"`, `"Password harus mengandung minimal satu huruf"`, `"Password tidak boleh sama dengan email"`, `"Password baru tidak boleh sama dengan password lama"`.
+  - `429 Too Many Requests`: Terlalu banyak permintaan dari IP yang sama.
+  - `503 Service Unavailable`: Fitur belum dikonfigurasi.
+
+---
+
+### 18.3 Variabel Lingkungan Baru
+
+Tambahkan ke `.env` backend:
+```env
+# Kunci rahasia HMAC-SHA256 untuk hash OTP & Token (Wajib, minimal 32 karakter acak)
+OTP_HMAC_SECRET=b7e1f4...minimal_32_karakter_acak...
+
+# Masa berlaku kode OTP dalam menit (Bawaan: 10)
+PASSWORD_RESET_OTP_TTL_MINUTES=10
+
+# Batas maksimal percobaan OTP salah sebelum di-lock (Bawaan: 5)
+PASSWORD_RESET_MAX_ATTEMPTS=5
+
+# Jeda waktu minimal antar-permintaan OTP dalam detik (Bawaan: 60)
+PASSWORD_RESET_COOLDOWN_SECONDS=60
+
+# Batas maksimal pengiriman OTP per akun dalam 1 jam (Bawaan: 5)
+PASSWORD_RESET_MAX_PER_HOUR=5
+
+# Izin reset password untuk akun peran admin (Bawaan: false)
+PASSWORD_RESET_ALLOW_ADMIN=false
+
+# Rate limiting Express (per 15 menit)
+RESET_FORGOT_IP_MAX=10
+RESET_VERIFY_IP_MAX=30
+RESET_VERIFY_EMAIL_MAX=10
+RESET_PASSWORD_IP_MAX=10
+
+# Debug OTP ke konsol (HANYA bekerja jika NODE_ENV="development")
+DEV_LOG_OTP=false
+```
+
+---
+
+### 18.4 Catatan Keamanan dan Arsitektur
+1. **Pencegahan Enumerasi Akun:** Endpoint `POST /forgot-password` merespons identik untuk semua akun, dan `POST /verify-reset-otp` melakukan kalkulasi dummy HMAC bila email tidak ada, sehingga waktu respons tidak membocorkan keberadaan akun.
+2. **Kerahasiaan Kode OTP:**
+   - Database `PasswordReset` HANYA menyimpan hash HMAC-SHA256 (tidak pernah menyimpan teks asli OTP maupun token reset).
+   - Log konsol provider email hanya mencatat tipe `password_reset_otp` dan email tersamar (tanpa subject dan tanpa body).
+   - Antrean admin (`GET /api/admin/emails`) menyembunyikan kolom `html` dan `text` untuk tipe OTP.
+   - Setelah email berstatus akhir (`sent`, `failed`, `skipped`), kolom `html` dan `text` dikosongkan dan dokumen dijadwalkan terhapus (`purgeAt = +1 hari`).
+3. **Pembatalan Sesi Login Lama:** Perubahan password dieksekusi melalui `user.save()`, yang secara otomatis memperbarui `passwordChangedAt`. Middleware autentikasi membandingkan `payload.iat < user.passwordChangedAt` sehingga seluruh token JWT lama langsung ditolak (401).
+4. **Rate Limiting & Proxy:** Pembatas laju menggunakan memori lokal instance. Pada server produksi di balik reverse proxy (seperti Nginx atau Cloudflare), pastikan `app.set('trust proxy', 1)` diaktifkan agar alamat IP klien terdeteksi dengan benar.
+
+---
+
+### 18.5 Petunjuk Integrasi untuk Frontend (Vue)
+1. **Tiga Layar / Tampilan Terpisah:**
+   - **Layar 1 (Input Email):** Input email dan tombol "Kirim Kode OTP". Setelah berhasil, simpan email di state dan arahkan ke Layar 2.
+   - **Layar 2 (Input OTP):** Tampilkan 6 kotak input angka untuk kode OTP. Pasang hitung mundur (countdown) berdasarkan `resendAfterSeconds` (60 detik) sebelum tombol "Kirim Ulang Kode" dapat ditekan kembali. Setelah verifikasi berhasil, simpan `resetToken` di memori dan arahkan ke Layar 3.
+   - **Layar 3 (Password Baru):** Input password baru dan konfirmasi password. Tampilkan indikator kekuatan password (minimal 8 karakter, huruf, dan angka).
+2. **Setelah Berhasil Reset:** Jangan mencoba login otomatis. Tampilkan toast/notifikasi sukses dan arahkan pengguna ke halaman `/login`.
+3. **Penanganan Status 429:** Tampilkan pesan error dari backend apa adanya jika pengguna terkena pembatasan laju (rate limit).

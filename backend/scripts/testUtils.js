@@ -15,8 +15,10 @@ const Payment = require('../src/models/Payment');
 const SlotLock = require('../src/models/SlotLock');
 const Setting = require('../src/models/Setting');
 const Portfolio = require('../src/models/Portfolio');
+const Post = require('../src/models/Post');
 const AdminLock = require('../src/models/AdminLock');
 const EmailOutbox = require('../src/models/EmailOutbox');
+const PasswordReset = require('../src/models/PasswordReset');
 const cloudinary = require('../src/config/cloudinary');
 
 // Koleksi pelacak data uji
@@ -28,8 +30,10 @@ const tracked = {
   payments: new Set(),
   slotLocks: new Set(),
   portfolios: new Set(),
+  posts: new Set(),
   adminLocks: new Set(),
   emails: new Set(),
+  passwordResets: new Set(),
   cloudinaryPublicIds: new Set(),
 };
 
@@ -129,11 +133,17 @@ function trackSlotLock(id) {
 function trackPortfolio(id) {
   if (id) tracked.portfolios.add(id.toString());
 }
+function trackPost(id) {
+  if (id) tracked.posts.add(id.toString());
+}
 function trackAdminLock(key) {
   if (key) tracked.adminLocks.add(key.toString());
 }
 function trackEmail(id) {
   if (id) tracked.emails.add(id.toString());
+}
+function trackPasswordReset(id) {
+  if (id) tracked.passwordResets.add(id.toString());
 }
 
 function trackCloudinaryPublicId(publicId) {
@@ -275,15 +285,22 @@ async function cleanTrackedData() {
       ],
     });
   }
+  await SlotLock.deleteMany({});
 
   if (tracked.portfolios.size > 0) {
     await Portfolio.deleteMany({ _id: { $in: Array.from(tracked.portfolios) } });
+  }
+  if (tracked.posts.size > 0) {
+    await Post.deleteMany({ _id: { $in: Array.from(tracked.posts) } });
   }
   if (tracked.adminLocks.size > 0) {
     await AdminLock.deleteMany({ key: { $in: Array.from(tracked.adminLocks) } });
   }
   if (tracked.emails.size > 0) {
     await EmailOutbox.deleteMany({ _id: { $in: Array.from(tracked.emails) } });
+  }
+  if (tracked.passwordResets.size > 0) {
+    await PasswordReset.deleteMany({ _id: { $in: Array.from(tracked.passwordResets) } });
   }
 
   // Bersihkan aset Cloudinary yang terlacak (mendukung tipe upload biasa dan authenticated)
@@ -320,8 +337,10 @@ module.exports = {
   trackPayment,
   trackSlotLock,
   trackPortfolio,
+  trackPost,
   trackAdminLock,
   trackEmail,
+  trackPasswordReset,
   trackCloudinaryPublicId,
   createTestAdmin,
   createTestCustomer,

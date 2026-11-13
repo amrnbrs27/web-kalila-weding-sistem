@@ -13,6 +13,7 @@ const userSchema = new mongoose.Schema(
     role: { type: String, enum: ['customer', 'admin'], default: 'customer' },
     isActive: { type: Boolean, default: true },
     passwordChangedAt: { type: Date, select: false },
+    lastPasswordResetRequestAt: { type: Date },
   },
   { timestamps: true }
 );

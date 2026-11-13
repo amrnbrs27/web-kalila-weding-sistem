@@ -68,7 +68,7 @@ async function processEmailOutbox(now = new Date()) {
       status: 'pending',
       nextAttemptAt: { $lte: now },
     })
-      .sort({ createdAt: 1 })
+      .sort({ priority: 1, createdAt: 1 })
       .limit(batchSize)
       .lean();
 
@@ -96,6 +96,23 @@ async function processEmailOutbox(now = new Date()) {
         continue;
       }
 
+      // Periksa notAfter: bila sudah lewat, tandai skipped dan jangan dikirim
+      if (claimed.notAfter && new Date(claimed.notAfter) < now) {
+        const finishTime = new Date();
+        const updateData = {
+          status: 'skipped',
+          lastError: 'Kedaluwarsa sebelum terkirim',
+          lockedUntil: null,
+          purgeAt: new Date(finishTime.getTime() + 24 * 60 * 60 * 1000),
+        };
+        if (claimed.type === 'password_reset_otp') {
+          updateData.html = '';
+          updateData.text = '';
+        }
+        await EmailOutbox.updateOne({ _id: claimed._id }, updateData);
+        continue;
+      }
+
       // 5. Kirim via provider aktif
       const idempotencyKey = `outbox-${claimed._id.toString()}`;
       const sendResult = await provider.sendEmail({
@@ -110,22 +127,30 @@ async function processEmailOutbox(now = new Date()) {
       });
 
       const finishTime = new Date();
+      const isOtp = claimed.type === 'password_reset_otp';
 
       if (sendResult.success) {
         sentSuccessCount++;
-        const purgeAt = new Date(finishTime.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const purgeDays = isOtp ? 1 : 30;
+        const purgeAt = new Date(finishTime.getTime() + purgeDays * 24 * 60 * 60 * 1000);
+
+        const updateData = {
+          status: 'sent',
+          sentAt: finishTime,
+          provider: provider.name,
+          providerMessageId: sendResult.messageId || null,
+          lockedUntil: null,
+          lastError: null,
+          purgeAt,
+        };
+        if (isOtp) {
+          updateData.html = '';
+          updateData.text = '';
+        }
 
         await EmailOutbox.updateOne(
           { _id: claimed._id },
-          {
-            status: 'sent',
-            sentAt: finishTime,
-            provider: provider.name,
-            providerMessageId: sendResult.messageId || null,
-            lockedUntil: null,
-            lastError: null,
-            purgeAt,
-          }
+          updateData
         );
       } else if (sendResult.retryable) {
         const nextAttempts = (claimed.attempts || 0) + 1;
@@ -133,16 +158,22 @@ async function processEmailOutbox(now = new Date()) {
 
         if (nextAttempts >= MAX_ATTEMPTS) {
           failedCount++;
-          const purgeAt = new Date(finishTime.getTime() + 90 * 24 * 60 * 60 * 1000);
+          const purgeDays = isOtp ? 1 : 90;
+          const purgeAt = new Date(finishTime.getTime() + purgeDays * 24 * 60 * 60 * 1000);
+          const updateData = {
+            status: 'failed',
+            attempts: nextAttempts,
+            lockedUntil: null,
+            lastError: cleanError,
+            purgeAt,
+          };
+          if (isOtp) {
+            updateData.html = '';
+            updateData.text = '';
+          }
           await EmailOutbox.updateOne(
             { _id: claimed._id },
-            {
-              status: 'failed',
-              attempts: nextAttempts,
-              lockedUntil: null,
-              lastError: cleanError,
-              purgeAt,
-            }
+            updateData
           );
         } else {
           const backoffMin = BACKOFF_MINUTES[nextAttempts - 1] || 240;
@@ -163,17 +194,23 @@ async function processEmailOutbox(now = new Date()) {
         failedCount++;
         const nextAttempts = (claimed.attempts || 0) + 1;
         const cleanError = (sendResult.error || 'Permanent delivery error').slice(0, 300);
-        const purgeAt = new Date(finishTime.getTime() + 90 * 24 * 60 * 60 * 1000);
+        const purgeDays = isOtp ? 1 : 90;
+        const purgeAt = new Date(finishTime.getTime() + purgeDays * 24 * 60 * 60 * 1000);
+        const updateData = {
+          status: 'failed',
+          attempts: nextAttempts,
+          lockedUntil: null,
+          lastError: cleanError,
+          purgeAt,
+        };
+        if (isOtp) {
+          updateData.html = '';
+          updateData.text = '';
+        }
 
         await EmailOutbox.updateOne(
           { _id: claimed._id },
-          {
-            status: 'failed',
-            attempts: nextAttempts,
-            lockedUntil: null,
-            lastError: cleanError,
-            purgeAt,
-          }
+          updateData
         );
       }
 

@@ -495,11 +495,14 @@ ${waTextSection}
   return { subject, html, text };
 }
 
+const { renderPasswordResetOtp } = require('./passwordResetOtp');
+
 module.exports = {
   renderBookingCreatedAdmin,
   renderBookingCreatedOwner,
   renderPaymentProofAdmin,
   renderBookingConfirmedCustomer,
+  renderPasswordResetOtp,
   formatDateId,
   formatDateShortId,
   formatDateTimeWIB,

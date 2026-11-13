@@ -10,6 +10,7 @@ const emailOutboxSchema = new mongoose.Schema(
         'booking_created_owner',
         'payment_proof_admin',
         'booking_confirmed_customer',
+        'password_reset_otp',
       ],
     },
     dedupeKey: {
@@ -21,7 +22,7 @@ const emailOutboxSchema = new mongoose.Schema(
     booking: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Booking',
-      required: true,
+      default: null,
     },
     payment: {
       type: mongoose.Schema.Types.ObjectId,
@@ -56,6 +57,15 @@ const emailOutboxSchema = new mongoose.Schema(
     replyTo: {
       type: String,
       trim: true,
+      default: null,
+    },
+    priority: {
+      type: Number,
+      default: 1,
+      index: true,
+    },
+    notAfter: {
+      type: Date,
       default: null,
     },
     status: {
@@ -107,6 +117,7 @@ const emailOutboxSchema = new mongoose.Schema(
 
 // Indeks komposit untuk job queue polling
 emailOutboxSchema.index({ status: 1, nextAttemptAt: 1 });
+emailOutboxSchema.index({ status: 1, priority: 1, nextAttemptAt: 1, createdAt: 1 });
 // Indeks relasi booking
 emailOutboxSchema.index({ booking: 1 });
 // Indeks TTL otomatis pada purgeAt saat sudah mencapai tanggal kedaluwarsa

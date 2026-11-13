@@ -22,9 +22,13 @@ function createLogProvider() {
       .map((e) => maskEmail(e.trim()))
       .join(', ');
 
-    console.log(
-      `[Email Log] Type: ${type || '-'} | To: ${masked} | Subject: "${subject}" | Key: ${idempotencyKey || '-'}`
-    );
+    if (type === 'password_reset_otp') {
+      console.log(`[Email Log] Type: ${type} | To: ${masked}`);
+    } else {
+      console.log(
+        `[Email Log] Type: ${type || '-'} | To: ${masked} | Subject: "${subject}" | Key: ${idempotencyKey || '-'}`
+      );
+    }
 
     return {
       success: true,

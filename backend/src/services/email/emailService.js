@@ -14,6 +14,7 @@ const {
   renderBookingCreatedOwner,
   renderPaymentProofAdmin,
   renderBookingConfirmedCustomer,
+  renderPasswordResetOtp,
 } = require('./templates');
 
 let activeMemoryProvider = null;
@@ -75,7 +76,7 @@ async function enqueue(item, { session } = {}) {
   const docToInsert = {
     type: item.type,
     dedupeKey: item.dedupeKey,
-    booking: item.booking,
+    booking: item.booking || null,
     payment: item.payment || null,
     to: targetTo,
     originalTo,
@@ -83,6 +84,8 @@ async function enqueue(item, { session } = {}) {
     html: item.html,
     text: item.text,
     replyTo: item.replyTo || null,
+    priority: item.priority !== undefined ? item.priority : 1,
+    notAfter: item.notAfter || null,
     status,
     attempts: item.attempts || 0,
     nextAttemptAt: item.nextAttemptAt || now,
@@ -270,12 +273,205 @@ async function triggerBookingConfirmedEmail(booking, setting, { session } = {}) 
   );
 }
 
+/**
+ * Mencoba mengirim email secara langsung di latar belakang sesaat setelah di-enqueue
+ * Memakai klaim atomik, batas harian, dan provider aktif yang sama dengan background job.
+ * Bila gagal/ditunda, item tetap 'pending' agar diambil oleh cron job.
+ */
+async function sendImmediateEmail(outboxDoc) {
+  if (!outboxDoc || !outboxDoc._id) return null;
+  const now = new Date();
+
+  try {
+    const configStatus = getEmailConfigStatus();
+    if (!configStatus.ready) {
+      return null;
+    }
+
+    const dailyLimit = Number(process.env.EMAIL_DAILY_LIMIT) || 90;
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const sentCount24h = await EmailOutbox.countDocuments({
+      status: 'sent',
+      sentAt: { $gte: twentyFourHoursAgo },
+    });
+
+    if (sentCount24h >= dailyLimit) {
+      return null;
+    }
+
+    // Klaim atomik: pastikan masih pending
+    const claimed = await EmailOutbox.findOneAndUpdate(
+      { _id: outboxDoc._id, status: 'pending' },
+      {
+        status: 'sending',
+        lockedUntil: new Date(now.getTime() + 5 * 60 * 1000),
+      },
+      { returnDocument: 'after' }
+    );
+
+    if (!claimed) {
+      return null;
+    }
+
+    // Cek notAfter
+    if (claimed.notAfter && new Date(claimed.notAfter) < now) {
+      const finishTime = new Date();
+      const updateData = {
+        status: 'skipped',
+        lastError: 'Kedaluwarsa sebelum terkirim',
+        lockedUntil: null,
+        purgeAt: new Date(finishTime.getTime() + 24 * 60 * 60 * 1000),
+      };
+      if (claimed.type === 'password_reset_otp') {
+        updateData.html = '';
+        updateData.text = '';
+      }
+      await EmailOutbox.updateOne({ _id: claimed._id }, updateData);
+      return claimed;
+    }
+
+    const provider = getProvider();
+    const idempotencyKey = `outbox-${claimed._id.toString()}`;
+    const sendResult = await provider.sendEmail({
+      from: process.env.EMAIL_FROM || 'Kalila <noreply@resend.dev>',
+      to: claimed.to,
+      subject: claimed.subject,
+      html: claimed.html,
+      text: claimed.text,
+      replyTo: claimed.replyTo,
+      idempotencyKey,
+      type: claimed.type,
+    });
+
+    const finishTime = new Date();
+    const isOtp = claimed.type === 'password_reset_otp';
+
+    if (sendResult.success) {
+      const purgeDays = isOtp ? 1 : 30;
+      const purgeAt = new Date(finishTime.getTime() + purgeDays * 24 * 60 * 60 * 1000);
+      const updateData = {
+        status: 'sent',
+        sentAt: finishTime,
+        provider: provider.name,
+        providerMessageId: sendResult.messageId || null,
+        lockedUntil: null,
+        lastError: null,
+        purgeAt,
+      };
+      if (isOtp) {
+        updateData.html = '';
+        updateData.text = '';
+      }
+      await EmailOutbox.updateOne({ _id: claimed._id }, updateData);
+    } else if (sendResult.retryable) {
+      const nextAttempts = (claimed.attempts || 0) + 1;
+      const cleanError = (sendResult.error || 'Retryable delivery error').slice(0, 300);
+      const BACKOFF_MINUTES = [1, 5, 15, 60, 240];
+      const backoffMin = BACKOFF_MINUTES[nextAttempts - 1] || 240;
+      const nextAttemptAt = new Date(finishTime.getTime() + backoffMin * 60 * 1000);
+
+      await EmailOutbox.updateOne(
+        { _id: claimed._id },
+        {
+          status: 'pending',
+          attempts: nextAttempts,
+          nextAttemptAt,
+          lockedUntil: null,
+          lastError: cleanError,
+        }
+      );
+    } else {
+      // Kesalahan permanen
+      const nextAttempts = (claimed.attempts || 0) + 1;
+      const cleanError = (sendResult.error || 'Permanent delivery error').slice(0, 300);
+      const purgeDays = isOtp ? 1 : 90;
+      const purgeAt = new Date(finishTime.getTime() + purgeDays * 24 * 60 * 60 * 1000);
+      const updateData = {
+        status: 'failed',
+        attempts: nextAttempts,
+        lockedUntil: null,
+        lastError: cleanError,
+        purgeAt,
+      };
+      if (isOtp) {
+        updateData.html = '';
+        updateData.text = '';
+      }
+      await EmailOutbox.updateOne({ _id: claimed._id }, updateData);
+    }
+
+    return claimed;
+  } catch (err) {
+    console.error('[Email Immediate Send Error] Gagal mengirim segera:', err.message);
+    try {
+      await EmailOutbox.updateOne(
+        { _id: outboxDoc._id, status: 'sending' },
+        { status: 'pending', lockedUntil: null }
+      );
+    } catch (_) {}
+    return null;
+  }
+}
+
+/**
+ * Pemicu: Email OTP Reset Password untuk Pengguna
+ */
+async function triggerPasswordResetOtpEmail({
+  user,
+  passwordReset,
+  otp,
+  expiresInMinutes = 10,
+  setting = null,
+  immediate = true,
+}) {
+  try {
+    const businessName = setting?.businessName || 'Kalila';
+    const template = renderPasswordResetOtp({
+      name: user.name,
+      otp,
+      expiresInMinutes,
+      businessName,
+    });
+
+    const replyTo = setting?.kontak?.email || process.env.EMAIL_REPLY_TO || null;
+    const dedupeKey = `password-reset:${passwordReset._id.toString()}`;
+
+    const enqueued = await enqueue({
+      type: 'password_reset_otp',
+      dedupeKey,
+      booking: null,
+      to: user.email,
+      subject: template.subject,
+      html: template.html,
+      text: template.text,
+      replyTo,
+      priority: 0,
+      notAfter: passwordReset.otpExpiresAt,
+    });
+
+    if (immediate && enqueued && enqueued.status === 'pending') {
+      try {
+        await sendImmediateEmail(enqueued);
+      } catch (err) {
+        console.error('[Email Outbox] Kesalahan immediate send OTP:', err.message);
+      }
+    }
+
+    return enqueued;
+  } catch (err) {
+    console.error('[Email Outbox Error] Gagal enqueue OTP reset password:', err.message);
+    return null;
+  }
+}
+
 module.exports = {
   getProvider,
   enqueue,
   triggerBookingCreatedEmails,
   triggerPaymentProofEmail,
   triggerBookingConfirmedEmail,
+  triggerPasswordResetOtpEmail,
+  sendImmediateEmail,
   setMemoryProviderInstance,
   getMemoryProviderInstance,
 };

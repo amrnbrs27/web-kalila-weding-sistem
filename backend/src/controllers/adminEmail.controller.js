@@ -131,7 +131,7 @@ const getEmailById = asyncHandler(async (req, res) => {
       to: maskEmail(email.to),
       originalTo: email.originalTo ? maskEmail(email.originalTo) : null,
       subject: email.subject,
-      text: email.text,
+      text: email.type === 'password_reset_otp' ? null : email.text,
       replyTo: email.replyTo || null,
       status: email.status,
       attempts: email.attempts,
