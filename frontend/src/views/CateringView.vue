@@ -193,109 +193,8 @@
       </div>
     </section>
 
-    <!-- 3. EXACT FOOTER (Matching Figma Catering Screenshot) -->
-    <footer class="relative w-full bg-[#161210] border-t border-[#C5A265]/20 pt-12 sm:pt-16 pb-10 overflow-hidden">
-      <!-- Container -->
-      <div class="relative z-10 max-w-[1240px] mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-10 items-center">
-          <!-- 1. Left Column: Our Location -->
-          <div class="space-y-3 sm:space-y-4">
-            <div class="flex items-center gap-2.5">
-              <!-- Location Pin Icon -->
-              <svg class="w-5 h-5 text-[#C5A265] shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <h4 class="font-serif text-lg sm:text-xl text-[#F2E3CF] font-normal tracking-wide">
-                Our Location
-              </h4>
-            </div>
-
-            <!-- Address -->
-            <p class="text-xs sm:text-[13px] text-stone-300 font-light leading-relaxed pl-7 max-w-sm">
-              Jl. BLPP No.21, Wonocatur, Banguntapan, Kec. Banguntapan, Kabupaten Bantul, D.I. Yogyakarta
-            </p>
-          </div>
-
-          <!-- 2. Center Column: Logo & Tagline (Bounded by subtle vertical dividers) -->
-          <div class="text-center md:border-x md:border-white/10 md:px-6 py-2 space-y-3">
-            <div class="flex justify-center">
-              <router-link to="/" class="inline-block group">
-                <img
-                  :src="LogoImg"
-                  alt="Kalila Catering & Dekorasi"
-                  class="h-10 sm:h-12 w-auto object-contain mx-auto drop-shadow-[0_2px_12px_rgba(212,175,55,0.25)] transition-transform duration-200 group-hover:scale-105"
-                />
-              </router-link>
-            </div>
-
-            <p class="font-serif italic text-xs sm:text-sm text-stone-300 font-light tracking-wide">
-              Trust Your Event To Us
-            </p>
-
-            <p class="text-[11px] text-stone-500 font-light tracking-wide">
-              ©2025 Kalila Catering Dekorasi Dev
-            </p>
-          </div>
-
-          <!-- 3. Right Column: Register to purchase & Socials -->
-          <div class="text-left md:text-right space-y-3">
-            <h4 class="font-serif text-base sm:text-lg text-[#F2E3CF] font-normal tracking-wide">
-              register to purchase the package
-            </h4>
-
-            <!-- Thin Horizontal Line -->
-            <div class="w-full h-[1px] bg-white/15 my-2"></div>
-
-            <!-- Social Media Icon Buttons -->
-            <div class="flex items-center justify-start md:justify-end gap-3.5">
-              <!-- WhatsApp -->
-              <a
-                :href="whatsappUrl"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-[#C5A265]/50 text-[#C5A265] hover:border-[#C5A265] hover:bg-[#C5A265] hover:text-black flex items-center justify-center transition-all active:scale-95"
-                aria-label="WhatsApp Kalila"
-              >
-                <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                  <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.03 14.69 2 12.04 2M12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.15 12.04 20.15C10.56 20.15 9.11 19.76 7.85 19L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 15 3.8 13.47 3.8 11.91C3.81 7.37 7.5 3.67 12.05 3.67M9.53 7.62C9.36 7.62 9.09 7.68 8.87 7.92C8.64 8.16 8.03 8.73 8.03 9.9C8.03 11.07 8.89 12.2 9.01 12.36C9.13 12.52 10.7 14.94 13.1 15.97C13.67 16.22 14.12 16.37 14.46 16.48C15.03 16.66 15.55 16.63 15.97 16.57C16.43 16.5 17.39 15.99 17.59 15.42C17.79 14.86 17.79 14.37 17.73 14.27C17.67 14.18 17.51 14.12 17.27 14C17.03 13.89 15.84 13.3 15.62 13.22C15.4 13.14 15.24 13.1 15.08 13.34C14.92 13.58 14.46 14.12 14.32 14.27C14.18 14.43 14.04 14.45 13.8 14.33C13.56 14.22 12.78 13.96 11.86 13.14C11.14 12.5 10.66 11.71 10.52 11.47C10.38 11.23 10.5 11.1 10.62 10.98C10.73 10.87 10.87 10.69 11 10.54C11.12 10.38 11.16 10.27 11.24 10.11C11.32 9.95 11.28 9.81 11.22 9.69C11.16 9.57 10.7 8.44 10.51 7.98C10.32 7.53 10.13 7.59 9.98 7.58C9.84 7.58 9.68 7.62 9.53 7.62Z"/>
-                </svg>
-              </a>
-
-              <!-- Instagram -->
-              <a
-                href="https://instagram.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-[#C5A265]/50 text-[#C5A265] hover:border-[#C5A265] hover:bg-[#C5A265] hover:text-black flex items-center justify-center transition-all active:scale-95"
-                aria-label="Instagram Kalila"
-              >
-                <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
-                </svg>
-              </a>
-
-              <!-- TikTok -->
-              <a
-                href="https://tiktok.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-[#C5A265]/50 text-[#C5A265] hover:border-[#C5A265] hover:bg-[#C5A265] hover:text-black flex items-center justify-center transition-all active:scale-95"
-                aria-label="TikTok Kalila"
-              >
-                <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                  <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.24 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/>
-                </svg>
-              </a>
-            </div>
-
-            <p class="text-[12px] text-stone-400 font-light">
-              Consult Your Design and Budget
-            </p>
-          </div>
-        </div>
-      </div>
-    </footer>
+    <!-- 3. FOOTER (Shared Component matching Home) -->
+    <Footer />
 
     <!-- 4. DETAIL MODAL (Opens when clicking "Selengkapnya →") -->
     <div
@@ -375,7 +274,7 @@
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import Navbar from "../components/common/Navbar.vue";
-import LogoImg from "../assets/logo.png";
+import Footer from "../components/common/Footer.vue";
 import { useToastStore } from "../stores/toast.js";
 
 // Catering Hero & Package Image (User provided)
