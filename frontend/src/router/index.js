@@ -22,6 +22,15 @@ const routes = [
     redirect: "/katalog/catering",
   },
   {
+    path: "/katalog/wedding",
+    name: "catalog-wedding",
+    component: () => import("../views/WeddingView.vue"),
+  },
+  {
+    path: "/wedding",
+    redirect: "/katalog/wedding",
+  },
+  {
     path: "/katalog/:category",
     name: "catalog-category",
     component: () => import("../views/CatalogView.vue"),
