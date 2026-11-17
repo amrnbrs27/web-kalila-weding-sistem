@@ -61,17 +61,6 @@
 
     <!-- 2. PILIHAN PAKET CATERING SECTION -->
     <section id="pilihan-paket" class="relative w-full py-16 sm:py-20 lg:py-24 overflow-hidden bg-[#161210]">
-      <!-- Background Botanical Line Art Ornaments -->
-      <!-- Left Botanical Leaf Ornament -->
-      <div class="absolute left-0 top-12 w-40 sm:w-56 md:w-64 pointer-events-none select-none z-0 opacity-40 mix-blend-screen">
-        <img :src="OrnamentLeft" alt="" class="w-full h-auto object-contain" />
-      </div>
-
-      <!-- Right Soft Floral Ornament -->
-      <div class="absolute right-0 top-8 w-44 sm:w-60 md:w-72 pointer-events-none select-none z-0 opacity-40 mix-blend-screen">
-        <img :src="OrnamentRight" alt="" class="w-full h-auto object-contain" />
-      </div>
-
       <!-- Section Container -->
       <div class="relative z-10 max-w-[1240px] mx-auto px-4 sm:px-6 lg:px-8">
         <!-- Section Header (Centered) -->
@@ -201,11 +190,6 @@
             </div>
           </div>
         </div>
-      </div>
-
-      <!-- Bottom Right Subtle Corner Line Art -->
-      <div class="absolute right-0 bottom-0 w-32 sm:w-44 pointer-events-none select-none z-0 opacity-30 mix-blend-screen">
-        <img :src="OrnamentBottomRight" alt="" class="w-full h-auto object-contain" />
       </div>
     </section>
 
@@ -394,16 +378,8 @@ import Navbar from "../components/common/Navbar.vue";
 import LogoImg from "../assets/logo.png";
 import { useToastStore } from "../stores/toast.js";
 
-// Cleaned Hero Image & Ornaments
-import HeroCleanBg from "../assets/catering/catering-hero-clean.jpg";
-import OrnamentLeft from "../assets/catering/catering-ornament-left.jpg";
-import OrnamentRight from "../assets/catering/catering-ornament-right.jpg";
-import OrnamentBottomRight from "../assets/catering/catering-ornament-bottom-right.jpg";
-
-// Real Cropped Photos for 3 Prasmanan Packages (Matching Figma Exactly)
-import imgSilver from "../assets/catering/prasmanan-silver.jpg";
-import imgGold from "../assets/catering/prasmanan-gold.jpg";
-import imgDeluxe from "../assets/catering/prasmanan-deluxe.jpg";
+// Catering Hero & Package Image (User provided)
+import HeroCleanBg from "../assets/catering/catering-hero-clean.png";
 
 const router = useRouter();
 const toast = useToastStore();
@@ -423,7 +399,7 @@ const prasmananPackages = [
     name: "Paket Prasmanan Silver",
     price: 21000,
     description: "Menu lengkap untuk acara Anda.",
-    image: imgSilver,
+    image: HeroCleanBg,
     inclusions: [
       "Nasi Putih Premium",
       "Olahan Ayam (Ayam Goreng Lengkuas / Rica / Fillet Asam Manis)",
@@ -441,7 +417,7 @@ const prasmananPackages = [
     name: "Paket Prasmanan Gold",
     price: 27000,
     description: "Pilihan menu premium dengan rasa istimewa.",
-    image: imgGold,
+    image: HeroCleanBg,
     inclusions: [
       "Nasi Putih Premium & Nasi Goreng Spesial",
       "Olahan Daging Sapi (Rendang / Daging Balado / Rolade Daging Sapi)",
@@ -460,7 +436,7 @@ const prasmananPackages = [
     name: "Paket Prasmanan Deluxe",
     price: 35000,
     description: "Pengalaman bersantap terbaik untuk momen spesial.",
-    image: imgDeluxe,
+    image: HeroCleanBg,
     inclusions: [
       "Nasi Putih Organik & Nasi Liwet / Nasi Kebuli Berempah",
       "Menu Utama Sapi (Beef Black Pepper / Teriyaki / Empal Gentong)",
@@ -483,7 +459,7 @@ const stallPackages = [
     name: "Stall Sate Ayam Madura",
     price: 15000,
     description: "Sate ayam empuk bumbu kacang khas dengan lontong.",
-    image: imgSilver,
+    image: HeroCleanBg,
     inclusions: [
       "5 Tusuk Sate Ayam Daging Pilihan",
       "Lontong Daun Pisang Lembut",
@@ -496,7 +472,7 @@ const stallPackages = [
     name: "Stall Zuppa Soup",
     price: 16000,
     description: "Cream soup lezat dengan puff pastry gurih renyah.",
-    image: imgGold,
+    image: HeroCleanBg,
     inclusions: [
       "Cream Soup Ayam & Jamur Jagung Manis",
       "Puff Pastry Panggang Renyah Mengembang",
@@ -508,7 +484,7 @@ const stallPackages = [
     name: "Stall Kambing Guling",
     price: 25000,
     description: "Daging kambing muda panggang empuk dengan bumbu kecap pedas.",
-    image: imgDeluxe,
+    image: HeroCleanBg,
     inclusions: [
       "Daging Kambing Muda Bakar Empuk Tanpa Bau",
       "Lontong Daun",
@@ -525,7 +501,7 @@ const nasiBoxPackages = [
     name: "Nasi Box Silver",
     price: 22000,
     description: "Pilihan hemat dan lezat untuk berbagai acara Anda.",
-    image: imgSilver,
+    image: HeroCleanBg,
     inclusions: [
       "Nasi Putih Harum",
       "Ayam Goreng Kalasan / Kremes",
@@ -540,7 +516,7 @@ const nasiBoxPackages = [
     name: "Nasi Box Gold",
     price: 28000,
     description: "Pilihan menu favorit dengan lauk daging istimewa.",
-    image: imgGold,
+    image: HeroCleanBg,
     inclusions: [
       "Nasi Putih / Nasi Kuning Gurih",
       "Rendang Daging Sapi Empuk",
@@ -555,7 +531,7 @@ const nasiBoxPackages = [
     name: "Nasi Box Deluxe",
     price: 35000,
     description: "Sajian kotak eksklusif lengkap dengan dessert manis.",
-    image: imgDeluxe,
+    image: HeroCleanBg,
     inclusions: [
       "Nasi Liwet / Nasi Kebuli Beras Pilihan",
       "Daging Sapi Lada Hitam / Empal",
