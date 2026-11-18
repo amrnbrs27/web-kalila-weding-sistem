@@ -68,12 +68,6 @@
               class="absolute left-1/2 -translate-x-1/2 mt-3 w-48 rounded-2xl bg-[#101115]/95 border border-white/10 shadow-2xl py-2 z-50 backdrop-blur-xl"
             >
               <router-link
-                to="/portofolio"
-                class="block px-4 py-2 text-xs text-gray-300 hover:bg-[#1E2026] hover:text-[#D4AF37] transition-colors"
-              >
-                Semua Portofolio
-              </router-link>
-              <router-link
                 to="/portofolio?kategori=dekor"
                 class="block px-4 py-2 text-xs text-gray-300 hover:bg-[#1E2026] hover:text-[#D4AF37] transition-colors"
               >
