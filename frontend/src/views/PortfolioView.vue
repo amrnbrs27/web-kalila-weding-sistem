@@ -5,19 +5,17 @@
 
     <!-- 1. HERO SECTION: DECORATION PORTFOLIO (Matching Figma Design Exactly) -->
     <section class="relative w-full pt-28 sm:pt-32 md:pt-36 pb-12 sm:pb-16 lg:pb-20 overflow-hidden border-b border-[#C5A265]/20">
-      <!-- Background Image with Soft Blur & Strategic Gradient Overlays -->
+      <!-- Background Image -->
       <div class="absolute inset-0 z-0">
         <img
           :src="HeroFloralBg"
           alt="Decoration Portfolio Background"
-          class="w-full h-full object-cover object-center filter blur-[3px] scale-105 brightness-90"
+          class="w-full h-full object-cover object-center scale-105"
         />
-        <!-- Top vignette so Navbar text remains super clear -->
-        <div class="absolute inset-0 bg-gradient-to-b from-black/70 via-black/40 to-transparent h-36"></div>
-
-        <!-- Center dark gradient overlay matching #161210 -->
-        <div class="absolute inset-0 bg-radial from-[#161210]/60 via-[#161210]/85 to-[#161210]"></div>
-        <div class="absolute inset-0 bg-[#161210]/60"></div>
+        <!-- Light overlay so text stays readable, but image remains clearly visible -->
+        <div class="absolute inset-0 bg-[#161210]/45"></div>
+        <!-- Subtle bottom fade to transition into page bg -->
+        <div class="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#161210] to-transparent"></div>
       </div>
 
       <!-- Thin Golden Divider Line below Navbar -->
@@ -308,7 +306,7 @@ import Navbar from "../components/common/Navbar.vue";
 import Footer from "../components/common/Footer.vue";
 
 // Background Assets
-import HeroFloralBg from "../assets/dekor-package-bg.png";
+import HeroFloralBg from "../assets/portofolio-bg.png";
 
 // Real Photos for the 5 Decoration Portfolio Cards (Matching Figma Screenshot Exactly)
 import imgModern from "../assets/dekor/economy-wedding.png";
