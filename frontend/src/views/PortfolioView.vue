@@ -444,7 +444,7 @@ const getCatalogLink = (item) => {
 // Sync category tab with URL query parameter (e.g. /portofolio?kategori=modern)
 const syncCategoryFromQuery = () => {
   const q = route.query.kategori;
-  const validCategories = ["modern", "traditional", "minimalis", "catering", "wedding"];
+  const validCategories = ["dekor", "modern", "traditional", "minimalis", "catering", "wedding"];
   if (q && validCategories.includes(q.toLowerCase())) {
     activeCategory.value = q.toLowerCase();
   } else {
