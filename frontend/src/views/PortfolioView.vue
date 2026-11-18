@@ -291,10 +291,10 @@ const selectedItem = ref(null);
 
 // Filter tabs
 const tabs = [
-  { value: "semua",    label: "Semua" },
-  { value: "dekor",    label: "Dekorasi" },
-  { value: "catering", label: "Catering" },
-  { value: "wedding",  label: "Wedding" },
+  { value: "semua",       label: "Semua" },
+  { value: "modern",      label: "Modern" },
+  { value: "traditional", label: "Traditional" },
+  { value: "minimalis",   label: "Minimalis" },
 ];
 
 // Dynamic hero text based on active category
@@ -325,7 +325,7 @@ const portfolioItems = [
   {
     id: 1,
     title: "Dekorasi Modern",
-    category: "dekor",
+    category: "modern",
     image: imgModern,
     venue: "Ballroom & Gedung Pernikahan",
     description: "Dekorasi pelaminan modern dengan perpaduan arch minimalis putih, rangkaian bunga pastel segar, dan pencahayaan warm ambient yang anggun dan romantis.",
@@ -334,7 +334,7 @@ const portfolioItems = [
   {
     id: 2,
     title: "Dekorasi Elegan",
-    category: "dekor",
+    category: "modern",
     image: imgElegan,
     venue: "Indoor Hall & Convention Center",
     description: "Tata panggung pelaminan 3-panel mewah dengan instalasi bunga segar beraneka warna, sofa pengantin premium, dan pendar lampu sorot dramatis bernuansa hangat.",
@@ -343,7 +343,7 @@ const portfolioItems = [
   {
     id: 3,
     title: "Dekorasi Tradisional",
-    category: "dekor",
+    category: "traditional",
     image: imgTradisional,
     venue: "Pendopo & Ballroom Budaya",
     description: "Nuansa agung tradisional Jawa berpadu sentuhan modern dengan gebyok ukir jati klasik, bunga mawar merah segar berlimpah, dan hanging fairy lights yang magis.",
@@ -352,7 +352,7 @@ const portfolioItems = [
   {
     id: 4,
     title: "Dekorasi Minimalis",
-    category: "dekor",
+    category: "minimalis",
     image: imgMinimalis,
     venue: "Grand Aisle & Function Hall",
     description: "Lorong pernikahan megah berkonsep minimalis modern dengan pilar-pilar bunga gantung melimpah dan lantai selasar berkilau yang memberikan kesan luas dan bersih.",
@@ -361,7 +361,7 @@ const portfolioItems = [
   {
     id: 5,
     title: "Dekorasi Outdoor",
-    category: "dekor",
+    category: "modern",
     image: imgOutdoor,
     venue: "Glasshouse & Garden Venue",
     description: "Struktur paviliun kaca modern berselimut rangkaian bunga warna-warni ceria dengan latar pemandangan alam terbuka yang spektakuler dan eksotis.",
@@ -444,7 +444,8 @@ const getCatalogLink = (item) => {
 // Sync category tab with URL query parameter (e.g. /portofolio?kategori=modern)
 const syncCategoryFromQuery = () => {
   const q = route.query.kategori;
-  if (q && ["dekor", "catering", "wedding"].includes(q.toLowerCase())) {
+  const validCategories = ["modern", "traditional", "minimalis", "catering", "wedding"];
+  if (q && validCategories.includes(q.toLowerCase())) {
     activeCategory.value = q.toLowerCase();
   } else {
     activeCategory.value = "semua";
