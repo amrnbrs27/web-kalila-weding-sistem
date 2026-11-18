@@ -80,7 +80,7 @@
                 Dekorasi
               </router-link>
               <router-link
-                to="/portofolio?kategori=catering"
+                to="/portofolio/catering"
                 class="block px-4 py-2 text-xs text-gray-300 hover:bg-[#1E2026] hover:text-[#D4AF37] transition-colors"
               >
                 Catering
