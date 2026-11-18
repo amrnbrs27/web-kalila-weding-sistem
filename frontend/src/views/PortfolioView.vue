@@ -34,66 +34,29 @@
 
         <!-- Headline (Serif Font matching Figma) -->
         <h1 class="font-serif text-3xl sm:text-4xl md:text-5xl lg:text-[54px] text-white font-normal tracking-tight mb-3 sm:mb-4 leading-tight drop-shadow-[0_2px_14px_rgba(0,0,0,0.85)]">
-          Decoration Portfolio
+          {{ heroTitle }}
         </h1>
 
         <!-- Subtitle -->
         <p class="text-xs sm:text-sm md:text-[15px] text-stone-300 font-light leading-relaxed max-w-xl mx-auto mb-7 sm:mb-8 drop-shadow">
-          Lihat berbagai hasil dekorasi pernikahan elegan dan berkelas yang telah kami wujudkan.
+          {{ heroSubtitle }}
         </p>
 
         <!-- Category Filter Tabs (Pill Buttons) -->
         <div class="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5">
           <button
+            v-for="tab in tabs"
+            :key="tab.value"
             type="button"
-            @click="activeCategory = 'semua'"
+            @click="activeCategory = tab.value"
             class="px-6 sm:px-7 py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer"
             :class="[
-              activeCategory === 'semua'
+              activeCategory === tab.value
                 ? 'bg-[#700B11] text-white border border-[#8C1B25] shadow-[0_4px_16px_rgba(112,11,17,0.45)]'
                 : 'bg-transparent text-stone-300 border border-white/20 hover:border-[#C5A265]/50 hover:text-white'
             ]"
           >
-            Semua
-          </button>
-
-          <button
-            type="button"
-            @click="activeCategory = 'modern'"
-            class="px-6 sm:px-7 py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer"
-            :class="[
-              activeCategory === 'modern'
-                ? 'bg-[#700B11] text-white border border-[#8C1B25] shadow-[0_4px_16px_rgba(112,11,17,0.45)]'
-                : 'bg-transparent text-stone-300 border border-white/20 hover:border-[#C5A265]/50 hover:text-white'
-            ]"
-          >
-            Modern
-          </button>
-
-          <button
-            type="button"
-            @click="activeCategory = 'traditional'"
-            class="px-6 sm:px-7 py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer"
-            :class="[
-              activeCategory === 'traditional'
-                ? 'bg-[#700B11] text-white border border-[#8C1B25] shadow-[0_4px_16px_rgba(112,11,17,0.45)]'
-                : 'bg-transparent text-stone-300 border border-white/20 hover:border-[#C5A265]/50 hover:text-white'
-            ]"
-          >
-            Traditional
-          </button>
-
-          <button
-            type="button"
-            @click="activeCategory = 'minimalis'"
-            class="px-6 sm:px-7 py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer"
-            :class="[
-              activeCategory === 'minimalis'
-                ? 'bg-[#700B11] text-white border border-[#8C1B25] shadow-[0_4px_16px_rgba(112,11,17,0.45)]'
-                : 'bg-transparent text-stone-300 border border-white/20 hover:border-[#C5A265]/50 hover:text-white'
-            ]"
-          >
-            Minimalis
+            {{ tab.label }}
           </button>
         </div>
       </div>
@@ -284,7 +247,7 @@
             </a>
 
             <router-link
-              to="/katalog/dekor"
+              :to="getCatalogLink(selectedItem)"
               class="w-full sm:w-auto py-3 px-6 rounded-full border border-[#C5A265] text-[#C5A265] hover:bg-[#C5A265]/10 text-xs sm:text-sm font-medium text-center transition-colors"
             >
               Lihat Paket Terkait
@@ -308,25 +271,61 @@ import Footer from "../components/common/Footer.vue";
 // Background Assets
 import HeroFloralBg from "../assets/portofolio-bg.png";
 
-// Real Photos for the 5 Decoration Portfolio Cards (Matching Figma Screenshot Exactly)
+// Dekorasi Photos
 import imgModern from "../assets/dekor/economy-wedding.png";
 import imgElegan from "../assets/dekor/dahlia-wedding.png";
 import imgTradisional from "../assets/dekor/amaryllis-wedding.png";
 import imgMinimalis from "../assets/dekor/sunflower-wedding.png";
 import imgOutdoor from "../assets/dekor/custom-package.png";
 
+// Catering & Wedding Photos (pakai aset tersedia sebagai placeholder)
+import imgCatering1 from "../assets/dekor/rose-wedding.png";
+import imgCatering2 from "../assets/dekor/bougainvillea-wedding.png";
+import imgCatering3 from "../assets/dekor/edelweiss-wedding.png";
+import imgWedding1 from "../assets/dekor/dahlia-wedding.png";
+import imgWedding2 from "../assets/dekor/amaryllis-wedding.png";
+
 const route = useRoute();
 const activeCategory = ref("semua");
 const selectedItem = ref(null);
 
+// Filter tabs
+const tabs = [
+  { value: "semua",    label: "Semua" },
+  { value: "dekor",    label: "Dekorasi" },
+  { value: "catering", label: "Catering" },
+  { value: "wedding",  label: "Wedding" },
+];
+
+// Dynamic hero text based on active category
+const heroTitle = computed(() => {
+  const map = {
+    semua:    "Our Portfolio",
+    dekor:    "Decoration Portfolio",
+    catering: "Catering Portfolio",
+    wedding:  "Wedding Portfolio",
+  };
+  return map[activeCategory.value] ?? "Our Portfolio";
+});
+
+const heroSubtitle = computed(() => {
+  const map = {
+    semua:    "Lihat berbagai hasil karya terbaik Kalila — dekorasi, catering, dan wedding yang telah kami wujudkan.",
+    dekor:    "Lihat berbagai hasil dekorasi pernikahan elegan dan berkelas yang telah kami wujudkan.",
+    catering: "Sajian catering kami menghadirkan cita rasa istimewa untuk momen paling berharga dalam hidup Anda.",
+    wedding:  "Paket pernikahan lengkap Kalila — dari dekorasi megah hingga sajian lezat dalam satu konsep harmonis.",
+  };
+  return map[activeCategory.value] ?? map.semua;
+});
+
 const whatsappNumber = "6281234567890";
 
-// 5 Portfolio Items matching Figma Layout Exactly
+// Portfolio Items — Dekorasi, Catering, Wedding
 const portfolioItems = [
   {
     id: 1,
     title: "Dekorasi Modern",
-    category: "modern",
+    category: "dekor",
     image: imgModern,
     venue: "Ballroom & Gedung Pernikahan",
     description: "Dekorasi pelaminan modern dengan perpaduan arch minimalis putih, rangkaian bunga pastel segar, dan pencahayaan warm ambient yang anggun dan romantis.",
@@ -335,7 +334,7 @@ const portfolioItems = [
   {
     id: 2,
     title: "Dekorasi Elegan",
-    category: "modern",
+    category: "dekor",
     image: imgElegan,
     venue: "Indoor Hall & Convention Center",
     description: "Tata panggung pelaminan 3-panel mewah dengan instalasi bunga segar beraneka warna, sofa pengantin premium, dan pendar lampu sorot dramatis bernuansa hangat.",
@@ -344,7 +343,7 @@ const portfolioItems = [
   {
     id: 3,
     title: "Dekorasi Tradisional",
-    category: "traditional",
+    category: "dekor",
     image: imgTradisional,
     venue: "Pendopo & Ballroom Budaya",
     description: "Nuansa agung tradisional Jawa berpadu sentuhan modern dengan gebyok ukir jati klasik, bunga mawar merah segar berlimpah, dan hanging fairy lights yang magis.",
@@ -353,7 +352,7 @@ const portfolioItems = [
   {
     id: 4,
     title: "Dekorasi Minimalis",
-    category: "minimalis",
+    category: "dekor",
     image: imgMinimalis,
     venue: "Grand Aisle & Function Hall",
     description: "Lorong pernikahan megah berkonsep minimalis modern dengan pilar-pilar bunga gantung melimpah dan lantai selasar berkilau yang memberikan kesan luas dan bersih.",
@@ -362,18 +361,63 @@ const portfolioItems = [
   {
     id: 5,
     title: "Dekorasi Outdoor",
-    category: "modern",
+    category: "dekor",
     image: imgOutdoor,
     venue: "Glasshouse & Garden Venue",
     description: "Struktur paviliun kaca modern berselimut rangkaian bunga warna-warni ceria dengan latar pemandangan alam terbuka yang spektakuler dan eksotis.",
     tags: ["Outdoor", "Glasshouse", "Full Colors"]
+  },
+  // ── CATERING ──
+  {
+    id: 6,
+    title: "Catering Prasmanan Elegan",
+    category: "catering",
+    image: imgCatering1,
+    venue: "Ballroom & Gedung Pernikahan",
+    description: "Sajian prasmanan mewah dengan 50+ menu pilihan — dari masakan Nusantara, Western, hingga hidangan penutup premium — ditata rapi oleh tim kami yang berpengalaman.",
+    tags: ["Prasmanan", "Multi Menu", "Elegan"]
+  },
+  {
+    id: 7,
+    title: "Catering Meja Makan VIP",
+    category: "catering",
+    image: imgCatering2,
+    venue: "Indoor Hall & Convention Center",
+    description: "Setup meja makan VIP dengan plating eksklusif, table setting premium, dan pelayanan white-glove yang memberikan kesan tak terlupakan bagi tamu kehormatan.",
+    tags: ["VIP Table", "Fine Dining", "Premium"]
+  },
+  {
+    id: 8,
+    title: "Catering Outdoor Garden",
+    category: "catering",
+    image: imgCatering3,
+    venue: "Garden & Outdoor Venue",
+    description: "Konsep catering outdoor yang segar dengan booth makanan interaktif, live cooking station, dan dekorasi meja nuansa alam yang menyatu indah dengan lingkungan sekitar.",
+    tags: ["Outdoor", "Live Cooking", "Garden"]
+  },
+  // ── WEDDING ──
+  {
+    id: 9,
+    title: "Wedding Paket Lengkap",
+    category: "wedding",
+    image: imgWedding1,
+    venue: "Grand Ballroom & Convention Center",
+    description: "Paket pernikahan all-in-one mencakup dekorasi pelaminan megah, catering 500 pax, dokumentasi profesional, MC bilingual, dan koordinasi hari-H oleh tim Kalila.",
+    tags: ["All Inclusive", "Grand Wedding", "Turnkey"]
+  },
+  {
+    id: 10,
+    title: "Wedding Intimate Premium",
+    category: "wedding",
+    image: imgWedding2,
+    venue: "Boutique Venue & Garden",
+    description: "Pernikahan intim berkelas untuk 50–150 tamu dengan dekorasi mewah personal, fine dining catering, dan sentuhan detail yang sangat diperhatikan oleh tim kreatif Kalila.",
+    tags: ["Intimate", "Premium Detail", "Boutique"]
   }
 ];
 
-// Row 1 (3 items): Dekorasi Modern, Dekorasi Elegan, Dekorasi Tradisional
+// Row 1 (3 items) & Row 2 (2 items) — only used in "semua" view, show first 5
 const row1Items = computed(() => portfolioItems.slice(0, 3));
-
-// Row 2 (2 items): Dekorasi Minimalis, Dekorasi Outdoor
 const row2Items = computed(() => portfolioItems.slice(3, 5));
 
 // Filtered items when a specific category tab is selected
@@ -391,10 +435,16 @@ const getConsultUrl = (item) => {
   return `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(msg)}`;
 };
 
+const getCatalogLink = (item) => {
+  if (item.category === "catering") return "/katalog/catering";
+  if (item.category === "wedding") return "/katalog/wedding";
+  return "/katalog/dekor";
+};
+
 // Sync category tab with URL query parameter (e.g. /portofolio?kategori=modern)
 const syncCategoryFromQuery = () => {
   const q = route.query.kategori;
-  if (q && ["modern", "traditional", "minimalis"].includes(q.toLowerCase())) {
+  if (q && ["dekor", "catering", "wedding"].includes(q.toLowerCase())) {
     activeCategory.value = q.toLowerCase();
   } else {
     activeCategory.value = "semua";
