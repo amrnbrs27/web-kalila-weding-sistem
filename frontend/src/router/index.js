@@ -51,9 +51,19 @@ const routes = [
     component: () => import("../views/PortfolioView.vue"),
   },
   {
+    path: "/portofolio/dekorasi",
+    name: "portfolio-dekorasi",
+    component: () => import("../views/PortfolioView.vue"),
+  },
+  {
     path: "/portofolio/catering",
     name: "portfolio-catering",
     component: () => import("../views/CateringPortfolioView.vue"),
+  },
+  {
+    path: "/portofolio/wedding",
+    name: "portfolio-wedding",
+    component: () => import("../views/WeddingPortfolioView.vue"),
   },
   {
     path: "/blog",
