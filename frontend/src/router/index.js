@@ -41,7 +41,7 @@ const routes = [
     component: () => import("../views/DetailView.vue"),
   },
   {
-    path: "/booking/:packageId",
+    path: "/booking/:packageId?",
     name: "booking",
     component: () => import("../views/BookingView.vue"),
   },
