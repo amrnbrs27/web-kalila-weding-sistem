@@ -1694,6 +1694,29 @@ const submitProofAndComplete = () => {
   isSubmitting.value = true;
   setTimeout(() => {
     isSubmitting.value = false;
+    const bookingData = {
+      orderCode: orderCode.value,
+      category: activeCategory.value,
+      categoryLabel: currentOrderSummary.value.categoryLabel,
+      packageName: currentOrderSummary.value.packageName,
+      eventDate: currentOrderSummary.value.eventDate,
+      venue: currentOrderSummary.value.venue,
+      totalPrice: currentOrderSummary.value.totalPrice,
+      dpAmount: 1000000,
+      paymentMethod: selectedPaymentMethod.value === 'bca' ? 'Decoration BCA (8023002530)' : 'Catering Mandiri (8023002530)',
+      orderStatus: 'menunggu_verifikasi',
+      paymentStatus: 'menunggu_verifikasi',
+      createdAt: new Date().toISOString(),
+      proofFileName: paymentProofFile.value?.name || 'bukti_transfer.jpg',
+      rejectionReason: '',
+      rejectionCount: 0,
+      clientName: currentOrderSummary.value.name,
+    };
+    try {
+      localStorage.setItem('kalila_current_booking', JSON.stringify(bookingData));
+    } catch (e) {
+      console.warn('Storage failed:', e);
+    }
     showSuccessModal.value = true;
   }, 1000);
 };
