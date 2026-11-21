@@ -256,9 +256,11 @@
                   v-if="reuploadFile"
                   type="button"
                   @click="submitReuploadProof"
-                  class="w-full sm:w-auto px-5 py-2.5 rounded-full bg-[#25D366] hover:bg-[#20ba59] text-white text-xs font-semibold transition-all cursor-pointer shadow-md"
+                  :disabled="isReuploading"
+                  class="w-full sm:w-auto px-5 py-2.5 rounded-full bg-[#25D366] hover:bg-[#20ba59] disabled:opacity-50 text-white text-xs font-semibold transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5"
                 >
-                  Kirim Bukti Baru
+                  <span v-if="!isReuploading">Kirim Bukti Baru</span>
+                  <span v-else>Mengunggah Bukti...</span>
                 </button>
               </div>
             </div>
@@ -551,7 +553,33 @@
       <!-- TAB 2: ORDER HISTORY CONTENT                                              -->
       <!-- ========================================================================= -->
       <div v-else-if="activeTab === 'history'" class="animate-fade-in">
-        <div class="bg-[#0E131B]/95 border border-white/10 rounded-3xl p-8 sm:p-14 text-center shadow-xl backdrop-blur-md">
+        <div v-if="pastBookings.length > 0" class="space-y-4">
+          <div
+            v-for="b in pastBookings"
+            :key="b._id"
+            class="bg-[#0E131B]/95 border border-white/10 rounded-3xl p-6 shadow-xl backdrop-blur-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+          >
+            <div>
+              <div class="flex items-center gap-3">
+                <span class="font-mono text-sm font-bold text-white">{{ b.bookingNumber }}</span>
+                <span
+                  class="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full"
+                  :class="b.status === 'selesai' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'"
+                >
+                  {{ b.status === 'selesai' ? 'Selesai' : 'Dibatalkan' }}
+                </span>
+              </div>
+              <h4 class="text-base font-semibold text-white mt-1">{{ b.packageSnapshot?.name || 'Paket Kalila' }}</h4>
+              <p class="text-xs text-stone-400 mt-0.5">Tanggal Acara: {{ b.eventDate }} • {{ b.location }}</p>
+            </div>
+            <div class="text-right shrink-0">
+              <span class="text-xs text-stone-400 block">Total Biaya</span>
+              <span class="text-sm font-semibold text-[#DFBA73]">{{ formatCurrency(b.packageSnapshot?.price || 0) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="bg-[#0E131B]/95 border border-white/10 rounded-3xl p-8 sm:p-14 text-center shadow-xl backdrop-blur-md">
           <div class="w-14 h-14 rounded-full bg-white/5 border border-white/10 text-stone-400 flex items-center justify-center mx-auto mb-4">
             <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -641,6 +669,7 @@
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth.js";
+import { bookingApi } from "../api/booking.js";
 import Navbar from "../components/common/Navbar.vue";
 import Footer from "../components/common/Footer.vue";
 
@@ -651,6 +680,8 @@ const adminPhone = "628156870982";
 // Active Tab: 'active' | 'history'
 const activeTab = ref("active");
 const openSelfDesignModal = ref(false);
+const isLoading = ref(false);
+const pastBookings = ref([]);
 
 // Active Booking State
 const activeBooking = ref(null);
@@ -675,8 +706,7 @@ const defaultSampleBooking = {
   clientName: "Sarah & Reza",
 };
 
-onMounted(() => {
-  // Load booking from localStorage (set by BookingView.vue)
+const loadFromLocalStorage = () => {
   try {
     const saved = localStorage.getItem("kalila_current_booking");
     if (saved) {
@@ -686,6 +716,60 @@ onMounted(() => {
     }
   } catch (e) {
     activeBooking.value = defaultSampleBooking;
+  }
+};
+
+onMounted(async () => {
+  if (authStore.isAuthenticated) {
+    isLoading.value = true;
+    try {
+      const res = await bookingApi.getMyBookings({ limit: 20 });
+      if (res?.data?.bookings && res.data.bookings.length > 0) {
+        const list = res.data.bookings;
+        // Cari pesanan yang masih berjalan
+        const active = list.find((b) =>
+          ["menunggu_dp", "menunggu_verifikasi", "terkonfirmasi", "berlangsung"].includes(b.status)
+        ) || list[0];
+
+        if (active) {
+          activeBooking.value = {
+            _id: active._id,
+            orderCode: active.bookingNumber,
+            category: active.category,
+            categoryLabel:
+              active.category === "dekor"
+                ? "Dekorasi Pelaminan"
+                : active.category === "catering"
+                ? "Catering Pernikahan"
+                : "Paket Wedding All-in-One",
+            packageName: active.packageSnapshot?.name || "Paket Kalila",
+            eventDate: active.eventDate,
+            venue: active.location,
+            totalPrice: active.packageSnapshot?.price || 0,
+            dpAmount: active.dpAmount || 1000000,
+            paymentMethod: "Decoration BCA (8023002530)",
+            orderStatus: active.status,
+            paymentStatus: active.paymentStatus,
+            proofFileName: "bukti_transfer.jpg",
+            rejectionReason: active.cancelReason || "",
+            rejectionCount: 0,
+            clientName: active.customerSnapshot?.name || authStore.user?.name || "Klien Kalila",
+            expiresAt: active.expiresAt,
+            createdAt: active.createdAt,
+          };
+        }
+        pastBookings.value = list.filter((b) => b.status === "selesai" || b.status === "dibatalkan");
+      } else {
+        loadFromLocalStorage();
+      }
+    } catch (err) {
+      console.warn("Could not fetch user bookings from API:", err.message);
+      loadFromLocalStorage();
+    } finally {
+      isLoading.value = false;
+    }
+  } else {
+    loadFromLocalStorage();
   }
 });
 
@@ -800,27 +884,52 @@ const whatsappAdminUrl = computed(() => {
 const handleReuploadFile = (event) => {
   const file = event.target.files[0];
   if (!file) return;
+
+  const validTypes = ["image/jpeg", "image/png", "image/webp"];
+  if (!validTypes.includes(file.type)) {
+    alert("Format file tidak didukung. Harap pilih gambar JPG, PNG, atau WEBP.");
+    event.target.value = "";
+    return;
+  }
+
   if (file.size > 5 * 1024 * 1024) {
     alert("Ukuran file maksimal 5MB.");
+    event.target.value = "";
     return;
   }
   reuploadFile.value = file;
 };
 
 // Submit Re-Uploaded Proof
-const submitReuploadProof = () => {
+const isReuploading = ref(false);
+const submitReuploadProof = async () => {
   if (!reuploadFile.value || !activeBooking.value) return;
-  activeBooking.value.proofFileName = reuploadFile.value.name;
-  activeBooking.value.orderStatus = "menunggu_verifikasi";
-  activeBooking.value.rejectionCount = (activeBooking.value.rejectionCount || 0) + 1;
-  reuploadFile.value = null;
 
+  isReuploading.value = true;
   try {
-    localStorage.setItem("kalila_current_booking", JSON.stringify(activeBooking.value));
-  } catch (e) {
-    console.warn(e);
+    if (activeBooking.value._id) {
+      await bookingApi.uploadPaymentProof(activeBooking.value._id, reuploadFile.value);
+    }
+
+    activeBooking.value.proofFileName = reuploadFile.value.name;
+    activeBooking.value.orderStatus = "menunggu_verifikasi";
+    activeBooking.value.paymentStatus = "menunggu_verifikasi";
+    activeBooking.value.rejectionCount = (activeBooking.value.rejectionCount || 0) + 1;
+    reuploadFile.value = null;
+
+    try {
+      localStorage.setItem("kalila_current_booking", JSON.stringify(activeBooking.value));
+    } catch (e) {
+      console.warn(e);
+    }
+    alert("Bukti transfer baru berhasil dikirimkan ke admin untuk diverifikasi!");
+  } catch (err) {
+    const errorMsg = err.response?.data?.message || err.message;
+    console.error("Reupload error:", errorMsg);
+    alert("Gagal mengunggah bukti transfer: " + errorMsg);
+  } finally {
+    isReuploading.value = false;
   }
-  alert("Bukti transfer baru berhasil dikirimkan ke admin!");
 };
 
 // Simulation / Testing Setter

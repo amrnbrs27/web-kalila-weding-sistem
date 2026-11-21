@@ -1246,7 +1246,7 @@
 
                   <!-- Disclaimer format matching Figma -->
                   <p class="text-[11px] sm:text-xs text-stone-400 font-light mt-5">
-                    Format: JPG, PNG, PDF • Maks. 5MB
+                    Format: JPG, PNG, WEBP • Maks. 5MB
                   </p>
                 </div>
 
@@ -1375,8 +1375,10 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth.js";
+import { bookingApi } from "../api/booking.js";
+import { packageApi } from "../api/packages.js";
 import Navbar from "../components/common/Navbar.vue";
 import Footer from "../components/common/Footer.vue";
 
@@ -1384,6 +1386,7 @@ import Footer from "../components/common/Footer.vue";
 import HeroFloralBg from "../assets/portofolio-bg.png";
 
 const route = useRoute();
+const router = useRouter();
 const authStore = useAuthStore();
 
 // Step state: 1 = Form Pemesanan, 2 = Booking Tanggal & Pembayaran (Matching Figma)
@@ -1391,6 +1394,10 @@ const currentStep = ref(1);
 
 // Active category: 'dekor' | 'catering' | 'wedding'
 const activeCategory = ref("dekor");
+
+// DB Packages & Current Active Booking ID
+const dbPackages = ref([]);
+const currentBookingId = ref("");
 
 const switchCategory = (cat) => {
   activeCategory.value = cat;
@@ -1627,7 +1634,7 @@ const isPdf = ref(false);
 const adminPhone = "628156870982";
 
 // Step 1 -> Step 2 (Transition to "Booking Tanggal" page)
-const goToPaymentStep = () => {
+const goToPaymentStep = async () => {
   const summary = currentOrderSummary.value;
 
   if (activeCategory.value === "catering") {
@@ -1652,15 +1659,120 @@ const goToPaymentStep = () => {
     }
   }
 
-  // Generate category-specific order code
-  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const randomSuffix = Math.floor(100 + Math.random() * 900);
-  const prefix = activeCategory.value === "catering" ? "KL-CT" : activeCategory.value === "wedding" ? "KL-WD" : "KL-DK";
-  orderCode.value = `${prefix}-${dateStr}-${randomSuffix}`;
+  // Cek apakah pelanggan sudah login
+  if (!authStore.isAuthenticated) {
+    if (confirm("Untuk melanjutkan booking dan pembayaran DP, Anda perlu masuk ke akun terlebih dahulu.\nLanjut ke halaman login?")) {
+      router.push({ path: "/login", query: { redirect: route.fullPath } });
+    }
+    return;
+  }
 
-  // Switch to Step 2 (Booking Tanggal page)
-  currentStep.value = 2;
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  // Validasi tanggal acara tidak boleh lampau
+  const chosenDate = currentOrderSummary.value.eventDate;
+  if (chosenDate < minDate.value) {
+    alert("Tanggal acara tidak boleh tanggal lampau.");
+    return;
+  }
+
+  isSubmitting.value = true;
+
+  try {
+    // Ambil paket yang sesuai dari DB
+    let targetPkg = null;
+    if (dbPackages.value.length > 0) {
+      const catPkgs = dbPackages.value.filter(p => p.category === activeCategory.value);
+      if (activeCategory.value === "catering") {
+        targetPkg = catPkgs.find(p => p.slug === formCatering.prasmananSlug) || catPkgs[0];
+      } else if (activeCategory.value === "wedding") {
+        targetPkg = catPkgs.find(p => p.slug === formWedding.packageSlug) || catPkgs[0];
+      } else {
+        targetPkg = catPkgs.find(p => p.slug === formDecor.packageSlug) || catPkgs[0];
+      }
+    }
+
+    if (targetPkg && targetPkg._id) {
+      const payload = {
+        packageId: targetPkg._id,
+        eventDate: chosenDate,
+        eventName: activeCategory.value === "catering"
+          ? `Catering - ${formCatering.name}`
+          : activeCategory.value === "wedding"
+          ? `Wedding - ${formWedding.name}`
+          : `Dekorasi - ${formDecor.name}`,
+        location: currentOrderSummary.value.venue,
+        contactName: currentOrderSummary.value.name,
+        contactPhone: activeCategory.value === "catering"
+          ? formCatering.phone
+          : activeCategory.value === "wedding"
+          ? formWedding.phone
+          : formDecor.phone,
+        contactEmail: activeCategory.value === "catering"
+          ? formCatering.email
+          : activeCategory.value === "wedding"
+          ? formWedding.email
+          : formDecor.email,
+        notes: (activeCategory.value === "catering"
+          ? formCatering.notes
+          : activeCategory.value === "wedding"
+          ? formWedding.notes
+          : formDecor.notes) || undefined,
+        formData: activeCategory.value === "dekor"
+          ? { decorArea: formDecor.decorArea || `${selectedDecorPackage.value?.stageWidth || '8 Meter'}` }
+          : activeCategory.value === "catering"
+          ? { servingTime: "11:00" }
+          : { additionalNeeds: formWedding.notes || formWedding.theme || "All-in-One Package" },
+      };
+
+      if (activeCategory.value === "catering") {
+        payload.guestCount = Number(formCatering.prasmananPax || 500);
+      } else if (activeCategory.value === "wedding") {
+        payload.guestCount = Number(formWedding.guestCount || 200);
+      }
+
+      const res = await bookingApi.createBooking(payload);
+      if (res?.data) {
+        orderCode.value = res.data.bookingNumber;
+        currentBookingId.value = res.data._id;
+
+        const bookingData = {
+          _id: res.data._id,
+          orderCode: res.data.bookingNumber,
+          category: activeCategory.value,
+          categoryLabel: currentOrderSummary.value.categoryLabel,
+          packageName: currentOrderSummary.value.packageName,
+          eventDate: currentOrderSummary.value.eventDate,
+          venue: currentOrderSummary.value.venue,
+          totalPrice: currentOrderSummary.value.totalPrice,
+          dpAmount: res.data.dpAmount || 1000000,
+          paymentMethod: selectedPaymentMethod.value === 'bca' ? 'Decoration BCA (8023002530)' : 'Catering Mandiri (8023002530)',
+          orderStatus: 'menunggu_dp',
+          paymentStatus: 'belum_dp',
+          createdAt: new Date().toISOString(),
+          proofFileName: '',
+          rejectionReason: '',
+          rejectionCount: 0,
+          clientName: currentOrderSummary.value.name,
+        };
+        localStorage.setItem('kalila_current_booking', JSON.stringify(bookingData));
+      }
+    } else {
+      // Local fallback jika paket belum di-seed di backend database
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const randomSuffix = Math.floor(100 + Math.random() * 900);
+      const prefix = activeCategory.value === "catering" ? "KL-CT" : activeCategory.value === "wedding" ? "KL-WD" : "KL-DK";
+      orderCode.value = `${prefix}-${dateStr}-${randomSuffix}`;
+    }
+
+    // Pindah ke Step 2 (Booking Tanggal & Pembayaran)
+    currentStep.value = 2;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (err) {
+    const errorMsg = err.response?.data?.message || err.message;
+    console.error("Booking error:", errorMsg);
+    alert("Gagal membuat pesanan: " + errorMsg);
+  } finally {
+    isSubmitting.value = false;
+  }
 };
 
 // Step 2: Handle File Upload
@@ -1668,13 +1780,21 @@ const handleFileUpload = (event) => {
   const file = event.target.files[0];
   if (!file) return;
 
+  const validTypes = ["image/jpeg", "image/png", "image/webp"];
+  if (!validTypes.includes(file.type)) {
+    alert("Format file tidak didukung. Harap unggah foto bukti transfer berupa JPG, PNG, atau WEBP.");
+    event.target.value = "";
+    return;
+  }
+
   if (file.size > 5 * 1024 * 1024) {
     alert("Ukuran file maksimal adalah 5MB.");
+    event.target.value = "";
     return;
   }
 
   paymentProofFile.value = file;
-  isPdf.value = file.type === "application/pdf";
+  isPdf.value = false;
   paymentProofPreview.value = URL.createObjectURL(file);
 };
 
@@ -1685,16 +1805,21 @@ const clearFile = () => {
 };
 
 // Step 2 -> Submit: "Order Sekarang" button
-const submitProofAndComplete = () => {
+const submitProofAndComplete = async () => {
   if (!paymentProofFile.value) {
     alert("Harap pilih dan unggah file bukti transfer terlebih dahulu.");
     return;
   }
 
   isSubmitting.value = true;
-  setTimeout(() => {
-    isSubmitting.value = false;
+
+  try {
+    if (currentBookingId.value) {
+      await bookingApi.uploadPaymentProof(currentBookingId.value, paymentProofFile.value);
+    }
+
     const bookingData = {
+      _id: currentBookingId.value || undefined,
       orderCode: orderCode.value,
       category: activeCategory.value,
       categoryLabel: currentOrderSummary.value.categoryLabel,
@@ -1718,7 +1843,13 @@ const submitProofAndComplete = () => {
       console.warn('Storage failed:', e);
     }
     showSuccessModal.value = true;
-  }, 1000);
+  } catch (err) {
+    const errorMsg = err.response?.data?.message || err.message;
+    console.error("Upload proof failed:", errorMsg);
+    alert("Gagal mengunggah bukti transfer: " + errorMsg);
+  } finally {
+    isSubmitting.value = false;
+  }
 };
 
 // WhatsApp Confirmation URL according to PRD 4.6 Poin 3
@@ -1729,7 +1860,7 @@ const whatsappConfirmationUrl = computed(() => {
 });
 
 // Auto-fill logged-in user profile & pre-fill package parameter from URL
-onMounted(() => {
+onMounted(async () => {
   // Pre-fill user data if logged in
   if (authStore.user) {
     const uName = authStore.user.name || "";
@@ -1747,6 +1878,16 @@ onMounted(() => {
     formWedding.name = uName;
     formWedding.phone = uPhone;
     formWedding.email = uEmail;
+  }
+
+  // Ambil paket real dari backend database
+  try {
+    const res = await packageApi.getPackages({ limit: 50 });
+    if (res?.data?.packages) {
+      dbPackages.value = res.data.packages;
+    }
+  } catch (err) {
+    console.warn("Could not fetch packages from API:", err.message);
   }
 
   // Pre-fill from route parameters or queries
