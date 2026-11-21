@@ -72,6 +72,7 @@ const routes = [
   },
   {
     path: "/kontak",
+    alias: "/contact",
     name: "contact",
     component: () => import("../views/ContactView.vue"),
   },
