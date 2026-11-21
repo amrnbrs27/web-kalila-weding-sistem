@@ -40,54 +40,9 @@
             Pesan Paket Sekarang
           </h1>
 
-          <p class="text-xs sm:text-sm md:text-[15px] text-stone-300 font-light leading-relaxed max-w-xl mx-auto drop-shadow mb-6">
-            Lengkapi form di bawah ini untuk melakukan pemesanan paket catering, dekorasi, atau wedding pernikahan Anda.
+          <p class="text-xs sm:text-sm md:text-[15px] text-stone-300 font-light leading-relaxed max-w-xl mx-auto drop-shadow">
+            Lengkapi form di bawah ini untuk melakukan pemesanan paket catering dan dekorasi pernikahan Anda.
           </p>
-
-          <!-- CATEGORY SWITCHER TABS (Dekorasi, Catering, Wedding) -->
-          <div class="inline-flex items-center p-1.5 rounded-full bg-[#0E131B]/90 border border-white/15 backdrop-blur-md shadow-xl gap-1 sm:gap-2">
-            <button
-              type="button"
-              @click="switchCategory('dekor')"
-              class="px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-300 flex items-center gap-1.5 cursor-pointer"
-              :class="[
-                activeCategory === 'dekor'
-                  ? 'bg-gradient-to-r from-[#700B11] to-[#8C1B25] text-white shadow-[0_4px_16px_rgba(112,11,17,0.5)] border border-[#941A29]/70 font-semibold'
-                  : 'text-stone-300 hover:text-white hover:bg-white/5'
-              ]"
-            >
-              <span>🌸</span>
-              <span>Dekorasi</span>
-            </button>
-
-            <button
-              type="button"
-              @click="switchCategory('catering')"
-              class="px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-300 flex items-center gap-1.5 cursor-pointer"
-              :class="[
-                activeCategory === 'catering'
-                  ? 'bg-gradient-to-r from-[#700B11] to-[#8C1B25] text-white shadow-[0_4px_16px_rgba(112,11,17,0.5)] border border-[#941A29]/70 font-semibold'
-                  : 'text-stone-300 hover:text-white hover:bg-white/5'
-              ]"
-            >
-              <span>🍽️</span>
-              <span>Catering</span>
-            </button>
-
-            <button
-              type="button"
-              @click="switchCategory('wedding')"
-              class="px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-300 flex items-center gap-1.5 cursor-pointer"
-              :class="[
-                activeCategory === 'wedding'
-                  ? 'bg-gradient-to-r from-[#700B11] to-[#8C1B25] text-white shadow-[0_4px_16px_rgba(112,11,17,0.5)] border border-[#941A29]/70 font-semibold'
-                  : 'text-stone-300 hover:text-white hover:bg-white/5'
-              ]"
-            >
-              <span>💍</span>
-              <span>Wedding</span>
-            </button>
-          </div>
         </div>
 
         <!-- MAIN CARD CONTAINER -->
