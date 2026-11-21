@@ -24,10 +24,10 @@
       <!-- Thin Golden Divider Line below Navbar -->
       <div class="absolute top-[72px] sm:top-[80px] md:top-[88px] left-0 right-0 h-[1px] bg-[#C5A265]/25 z-20 pointer-events-none"></div>
 
-      <!-- Content Container -->
+      <!-- Main Content Container -->
       <div class="relative z-20 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <!-- Header: Kicker, Title, Subtitle -->
-        <div class="text-center mb-8 sm:mb-12">
+        <div class="text-center mb-8 sm:mb-10">
           <div class="inline-flex items-center justify-center gap-3 mb-2.5 sm:mb-3">
             <span class="w-8 sm:w-12 h-[1px] bg-[#C5A265]"></span>
             <span class="text-[10px] sm:text-xs uppercase tracking-[0.28em] text-[#C5A265] font-semibold drop-shadow">
@@ -40,9 +40,54 @@
             Pesan Paket Sekarang
           </h1>
 
-          <p class="text-xs sm:text-sm md:text-[15px] text-stone-300 font-light leading-relaxed max-w-xl mx-auto drop-shadow">
-            Lengkapi form di bawah ini untuk melakukan pemesanan paket catering dan dekorasi pernikahan Anda.
+          <p class="text-xs sm:text-sm md:text-[15px] text-stone-300 font-light leading-relaxed max-w-xl mx-auto drop-shadow mb-6">
+            Lengkapi form di bawah ini untuk melakukan pemesanan paket catering, dekorasi, atau wedding pernikahan Anda.
           </p>
+
+          <!-- CATEGORY SWITCHER TABS (Dekorasi, Catering, Wedding) -->
+          <div class="inline-flex items-center p-1.5 rounded-full bg-[#0E131B]/90 border border-white/15 backdrop-blur-md shadow-xl gap-1 sm:gap-2">
+            <button
+              type="button"
+              @click="switchCategory('dekor')"
+              class="px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-300 flex items-center gap-1.5 cursor-pointer"
+              :class="[
+                activeCategory === 'dekor'
+                  ? 'bg-gradient-to-r from-[#700B11] to-[#8C1B25] text-white shadow-[0_4px_16px_rgba(112,11,17,0.5)] border border-[#941A29]/70 font-semibold'
+                  : 'text-stone-300 hover:text-white hover:bg-white/5'
+              ]"
+            >
+              <span>🌸</span>
+              <span>Dekorasi</span>
+            </button>
+
+            <button
+              type="button"
+              @click="switchCategory('catering')"
+              class="px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-300 flex items-center gap-1.5 cursor-pointer"
+              :class="[
+                activeCategory === 'catering'
+                  ? 'bg-gradient-to-r from-[#700B11] to-[#8C1B25] text-white shadow-[0_4px_16px_rgba(112,11,17,0.5)] border border-[#941A29]/70 font-semibold'
+                  : 'text-stone-300 hover:text-white hover:bg-white/5'
+              ]"
+            >
+              <span>🍽️</span>
+              <span>Catering</span>
+            </button>
+
+            <button
+              type="button"
+              @click="switchCategory('wedding')"
+              class="px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-300 flex items-center gap-1.5 cursor-pointer"
+              :class="[
+                activeCategory === 'wedding'
+                  ? 'bg-gradient-to-r from-[#700B11] to-[#8C1B25] text-white shadow-[0_4px_16px_rgba(112,11,17,0.5)] border border-[#941A29]/70 font-semibold'
+                  : 'text-stone-300 hover:text-white hover:bg-white/5'
+              ]"
+            >
+              <span>💍</span>
+              <span>Wedding</span>
+            </button>
+          </div>
         </div>
 
         <!-- MAIN CARD CONTAINER -->
@@ -67,8 +112,14 @@
             </svg>
           </div>
 
-          <!-- 2-Column Responsive Form -->
-          <form @submit.prevent="goToPaymentStep" class="space-y-6 sm:space-y-7 relative z-10">
+          <!-- ========================================================================= -->
+          <!-- A. FORM DEKORASI (Pelaminan, Tema, Lebar Panggung, dsb.)                   -->
+          <!-- ========================================================================= -->
+          <form
+            v-if="activeCategory === 'dekor'"
+            @submit.prevent="goToPaymentStep"
+            class="space-y-6 sm:space-y-7 relative z-10"
+          >
             <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 lg:gap-x-12 gap-y-5 sm:gap-y-6">
 
               <!-- Row 1 Left: Paket Dekorasi * -->
@@ -82,17 +133,16 @@
                 <div class="relative">
                   <select
                     id="packageSelect"
-                    v-model="form.packageSlug"
-                    @change="onPackageChange"
+                    v-model="formDecor.packageSlug"
+                    @change="onDecorPackageChange"
                     required
-                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors appearance-none pr-10 cursor-pointer"
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors appearance-none cursor-pointer"
                   >
-                    <option value="" disabled>Pilih paket dekorasi</option>
-                    <option v-for="pkg in decorPackages" :key="pkg.slug" :value="pkg.slug">
-                      {{ pkg.name }} ({{ formatCurrency(pkg.price) }}) - Lebar: {{ pkg.stageWidth }}
+                    <option v-for="pkg in decorPackages" :key="pkg.slug" :value="pkg.slug" class="bg-[#18202C] text-white">
+                      {{ pkg.name }} — {{ formatCurrency(pkg.price) }} ({{ pkg.stageWidth }})
                     </option>
                   </select>
-                  <div class="absolute inset-y-0 right-0 flex items-center pr-3.5 pointer-events-none text-stone-400">
+                  <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-[#C5A265]">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                     </svg>
@@ -102,15 +152,15 @@
 
               <!-- Row 1 Right: Nama Mempelai / Pemesan * -->
               <div>
-                <label for="clientName" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                <label for="clientNameDecor" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
                   <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                   </svg>
-                  <span>Nama <span class="text-[#E63946]">*</span></span>
+                  <span>Nama Mempelai / Pemesan <span class="text-[#E63946]">*</span></span>
                 </label>
                 <input
-                  id="clientName"
-                  v-model="form.name"
+                  id="clientNameDecor"
+                  v-model="formDecor.name"
                   type="text"
                   required
                   placeholder="Enter Your Name"
@@ -118,30 +168,29 @@
                 />
               </div>
 
-              <!-- Row 2 Left: Nuansa / Tema Warna * -->
+              <!-- Row 2 Left: Pilihan Konsep / Tema * -->
               <div>
-                <label for="colorTheme" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                <label for="themeSelectDecor" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
                   <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 21a4 4 0 01-4-4 4 4 0 014-4h2a4 4 0 014 4 4 4 0 01-4 4H7zm0 0a4 4 0 004-4v-2m-4 6h10a4 4 0 004-4v-2a4 4 0 00-4-4h-2m-8 4v-2a4 4 0 014-4h2m-6 0a4 4 0 014-4V3"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
                   </svg>
-                  <span>Nuansa / Tema Warna <span class="text-[#E63946]">*</span></span>
+                  <span>Konsep / Tema Dekorasi <span class="text-[#E63946]">*</span></span>
                 </label>
                 <div class="relative">
                   <select
-                    id="colorTheme"
-                    v-model="form.theme"
+                    id="themeSelectDecor"
+                    v-model="formDecor.theme"
                     required
-                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors appearance-none pr-10 cursor-pointer"
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors appearance-none cursor-pointer"
                   >
-                    <option value="" disabled>Pilih konsep nuansa warna</option>
-                    <option value="Pastel Soft &amp; Romantic Florals">Pastel Soft &amp; Romantic Florals</option>
-                    <option value="Pure White, Gold &amp; Modern Glass">Pure White, Gold &amp; Modern Glass</option>
-                    <option value="Bold Romantic Maroon &amp; Burgundy">Bold Romantic Maroon &amp; Burgundy</option>
-                    <option value="Tradisional Adat Jawa Klasik (Gebyok Jati)">Tradisional Adat Jawa Klasik (Gebyok Jati)</option>
-                    <option value="Rustic Garden &amp; Bohemian Chic">Rustic Garden &amp; Bohemian Chic</option>
-                    <option value="Custom / Sesuai Moodboard Pribadi">Custom / Sesuai Moodboard Pribadi</option>
+                    <option value="Pastel Soft &amp; Romantic Florals" class="bg-[#18202C]">Pastel Soft &amp; Romantic Florals</option>
+                    <option value="Traditional Jawa Modern (Geber Kayu &amp; Melati)" class="bg-[#18202C]">Traditional Jawa Modern (Geber Kayu &amp; Melati)</option>
+                    <option value="Sunda Siger White Elegance" class="bg-[#18202C]">Sunda Siger White Elegance</option>
+                    <option value="Modern Rustic Bohemian Dried Flowers" class="bg-[#18202C]">Modern Rustic Bohemian Dried Flowers</option>
+                    <option value="Grand Royal Glamour Gold &amp; Maroon" class="bg-[#18202C]">Grand Royal Glamour Gold &amp; Maroon</option>
+                    <option value="Minimalist Botanical Greenery" class="bg-[#18202C]">Minimalist Botanical Greenery</option>
                   </select>
-                  <div class="absolute inset-y-0 right-0 flex items-center pr-3.5 pointer-events-none text-stone-400">
+                  <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-[#C5A265]">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                     </svg>
@@ -151,15 +200,15 @@
 
               <!-- Row 2 Right: No. WhatsApp * -->
               <div>
-                <label for="clientPhone" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                <label for="clientPhoneDecor" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
                   <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
                   </svg>
                   <span>No. WhatsApp <span class="text-[#E63946]">*</span></span>
                 </label>
                 <input
-                  id="clientPhone"
-                  v-model="form.phone"
+                  id="clientPhoneDecor"
+                  v-model="formDecor.phone"
                   type="tel"
                   required
                   placeholder="Contoh: 0812xxxxxxxx"
@@ -169,7 +218,7 @@
 
               <!-- Row 3 Left: Tipe Venue * -->
               <div>
-                <label for="venueType" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                <label for="venueTypeDecor" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
                   <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
                   </svg>
@@ -177,19 +226,17 @@
                 </label>
                 <div class="relative">
                   <select
-                    id="venueType"
-                    v-model="form.venueType"
+                    id="venueTypeDecor"
+                    v-model="formDecor.venueType"
                     required
-                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors appearance-none pr-10 cursor-pointer"
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors appearance-none cursor-pointer"
                   >
-                    <option value="" disabled>Pilih tipe lokasi venue</option>
-                    <option value="Gedung / Ballroom">Gedung / Ballroom</option>
-                    <option value="Rumah Pribadi">Rumah Pribadi</option>
-                    <option value="Pendopo Adat / Joglo">Pendopo Adat / Joglo</option>
-                    <option value="Outdoor / Garden / Glasshouse">Outdoor / Garden / Glasshouse</option>
-                    <option value="Hotel &amp; Convention Center">Hotel &amp; Convention Center</option>
+                    <option value="Gedung / Ballroom" class="bg-[#18202C]">Gedung / Ballroom</option>
+                    <option value="Hotel Bintang" class="bg-[#18202C]">Hotel Bintang</option>
+                    <option value="Outdoor / Garden Party" class="bg-[#18202C]">Outdoor / Garden Party</option>
+                    <option value="Kediaman Pribadi / Rumah" class="bg-[#18202C]">Kediaman Pribadi / Rumah</option>
                   </select>
-                  <div class="absolute inset-y-0 right-0 flex items-center pr-3.5 pointer-events-none text-stone-400">
+                  <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-[#C5A265]">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                     </svg>
@@ -199,7 +246,7 @@
 
               <!-- Row 3 Right: Venue * -->
               <div>
-                <label for="venueAddress" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                <label for="venueAddressDecor" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
                   <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -207,8 +254,8 @@
                   <span>Venue <span class="text-[#E63946]">*</span></span>
                 </label>
                 <input
-                  id="venueAddress"
-                  v-model="form.venue"
+                  id="venueAddressDecor"
+                  v-model="formDecor.venue"
                   type="text"
                   required
                   placeholder="Enter Your Venue"
@@ -218,7 +265,7 @@
 
               <!-- Row 4 Left: Lebar Area Pelaminan -->
               <div>
-                <label for="stageWidth" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                <label for="stageWidthDecor" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
                   <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 6h16M4 12h16M4 18h16"/>
                   </svg>
@@ -226,8 +273,8 @@
                 </label>
                 <div class="relative">
                   <input
-                    id="stageWidth"
-                    v-model="form.stageWidth"
+                    id="stageWidthDecor"
+                    v-model="formDecor.stageWidth"
                     type="number"
                     min="4"
                     max="20"
@@ -242,7 +289,7 @@
 
               <!-- Row 4 Right: Tanggal Event * -->
               <div>
-                <label for="eventDate" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                <label for="eventDateDecor" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
                   <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                   </svg>
@@ -250,8 +297,8 @@
                 </label>
                 <div class="relative">
                   <input
-                    id="eventDate"
-                    v-model="form.eventDate"
+                    id="eventDateDecor"
+                    v-model="formDecor.eventDate"
                     :min="minDate"
                     type="date"
                     required
@@ -262,15 +309,15 @@
 
               <!-- Row 5 Left: Email Pemesan (PRD 4.5) * -->
               <div>
-                <label for="clientEmail" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                <label for="clientEmailDecor" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
                   <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                   </svg>
                   <span>Email Pemesan <span class="text-[#E63946]">*</span></span>
                 </label>
                 <input
-                  id="clientEmail"
-                  v-model="form.email"
+                  id="clientEmailDecor"
+                  v-model="formDecor.email"
                   type="email"
                   required
                   placeholder="Contoh: sarah@gmail.com"
@@ -280,15 +327,15 @@
 
               <!-- Row 5 Right: Your Instagram -->
               <div>
-                <label for="clientInstagram" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                <label for="clientInstagramDecor" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
                   <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162z"/>
                   </svg>
                   <span>Your Instagram</span>
                 </label>
                 <input
-                  id="clientInstagram"
-                  v-model="form.instagram"
+                  id="clientInstagramDecor"
+                  v-model="formDecor.instagram"
                   type="text"
                   placeholder="Contoh: @username &amp; @secondusername"
                   class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors"
@@ -297,15 +344,15 @@
 
               <!-- Row 6 Left: Catatan Khusus -->
               <div>
-                <label for="specialNotes" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                <label for="specialNotesDecor" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
                   <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                   </svg>
                   <span>Catatan Khusus / Request</span>
                 </label>
                 <input
-                  id="specialNotes"
-                  v-model="form.notes"
+                  id="specialNotesDecor"
+                  v-model="formDecor.notes"
                   type="text"
                   placeholder="Contoh: Request pergola masuk &amp; backdrop photobooth"
                   class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors"
@@ -314,7 +361,7 @@
 
               <!-- Row 6 Right: Total Biaya Paket -->
               <div>
-                <label for="totalPrice" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                <label for="totalPriceDecor" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
                   <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                   </svg>
@@ -322,8 +369,8 @@
                 </label>
                 <div class="relative">
                   <input
-                    id="totalPrice"
-                    :value="formatCurrency(selectedPackage ? selectedPackage.price : 0)"
+                    id="totalPriceDecor"
+                    :value="formatCurrency(selectedDecorPackage ? selectedDecorPackage.price : 0)"
                     type="text"
                     readonly
                     class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#12161E] border border-white/10 text-[#C5A265] font-semibold text-xs sm:text-sm focus:outline-none cursor-default"
@@ -358,6 +405,636 @@
               </div>
             </div>
           </form>
+
+          <!-- ========================================================================= -->
+          <!-- B. FORM CATERING (Exact Match to User Mockup media_1795264352817_6b9f8ba0) -->
+          <!-- ========================================================================= -->
+          <form
+            v-else-if="activeCategory === 'catering'"
+            @submit.prevent="goToPaymentStep"
+            class="space-y-6 sm:space-y-7 relative z-10"
+          >
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 lg:gap-x-12 gap-y-5 sm:gap-y-6">
+
+              <!-- ================= LEFT COLUMN: CATERING PACKAGES & PORTIONS ================= -->
+
+              <!-- Row 1 Left: Paket Prasmanan * (With Cloche / Food Icon) -->
+              <div>
+                <label for="cateringPrasmanan" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  <span>Paket Prasmanan <span class="text-[#E63946]">*</span></span>
+                </label>
+                <div class="relative">
+                  <select
+                    id="cateringPrasmanan"
+                    v-model="formCatering.prasmananSlug"
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors appearance-none cursor-pointer"
+                  >
+                    <option value="none" class="bg-[#18202C]">-- Tanpa Paket Prasmanan --</option>
+                    <option
+                      v-for="pkg in prasmananOptions"
+                      :key="pkg.slug"
+                      :value="pkg.slug"
+                      class="bg-[#18202C] text-white"
+                    >
+                      {{ pkg.name }} — {{ formatCurrency(pkg.price) }} / pax
+                    </option>
+                  </select>
+                  <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-[#C5A265]">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Row 1 Right: Nama * (User Icon) -->
+              <div>
+                <label for="clientNameCatering" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                  </svg>
+                  <span>Nama <span class="text-[#E63946]">*</span></span>
+                </label>
+                <input
+                  id="clientNameCatering"
+                  v-model="formCatering.name"
+                  type="text"
+                  required
+                  placeholder="Enter Your Name"
+                  class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors"
+                />
+              </div>
+
+              <!-- Row 2 Left: Paket Stall * (Storefront Icon) -->
+              <div>
+                <label for="cateringStall" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+                  </svg>
+                  <span>Paket Stall <span class="text-[#E63946]">*</span></span>
+                </label>
+                <div class="relative">
+                  <select
+                    id="cateringStall"
+                    v-model="formCatering.stallSlug"
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors appearance-none cursor-pointer"
+                  >
+                    <option value="none" class="bg-[#18202C]">-- Tanpa Paket Stall --</option>
+                    <option
+                      v-for="pkg in stallOptions"
+                      :key="pkg.slug"
+                      :value="pkg.slug"
+                      class="bg-[#18202C] text-white"
+                    >
+                      {{ pkg.name }} — {{ formatCurrency(pkg.price) }} / porsi
+                    </option>
+                  </select>
+                  <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-[#C5A265]">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Row 2 Right: No. WhatsApp * (WhatsApp Icon) -->
+              <div>
+                <label for="clientPhoneCatering" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+                  </svg>
+                  <span>No. WhatsApp <span class="text-[#E63946]">*</span></span>
+                </label>
+                <input
+                  id="clientPhoneCatering"
+                  v-model="formCatering.phone"
+                  type="tel"
+                  required
+                  placeholder="Contoh: 0812xxxxxxxx"
+                  class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors"
+                />
+              </div>
+
+              <!-- Row 3 Left: Paket Nasi Box * (Box Icon) -->
+              <div>
+                <label for="cateringNasiBox" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                  </svg>
+                  <span>Paket Nasi Box <span class="text-[#E63946]">*</span></span>
+                </label>
+                <div class="relative">
+                  <select
+                    id="cateringNasiBox"
+                    v-model="formCatering.nasiBoxSlug"
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors appearance-none cursor-pointer"
+                  >
+                    <option value="none" class="bg-[#18202C]">-- Tanpa Paket Nasi Box --</option>
+                    <option
+                      v-for="pkg in nasiBoxOptions"
+                      :key="pkg.slug"
+                      :value="pkg.slug"
+                      class="bg-[#18202C] text-white"
+                    >
+                      {{ pkg.name }} — {{ formatCurrency(pkg.price) }} / box
+                    </option>
+                  </select>
+                  <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-[#C5A265]">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Row 3 Right: Venue * (Map Pin Icon) -->
+              <div>
+                <label for="cateringVenue" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  </svg>
+                  <span>Venue <span class="text-[#E63946]">*</span></span>
+                </label>
+                <input
+                  id="cateringVenue"
+                  v-model="formCatering.venue"
+                  type="text"
+                  required
+                  placeholder="Enter Your Venue"
+                  class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors"
+                />
+              </div>
+
+              <!-- Row 4 Left: Jumlah Porsi Stall (People Icon + Pax) -->
+              <div>
+                <label for="stallPaxInput" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                  </svg>
+                  <span>Jumlah Porsi Stall</span>
+                </label>
+                <div class="relative">
+                  <input
+                    id="stallPaxInput"
+                    v-model.number="formCatering.stallPax"
+                    type="number"
+                    min="0"
+                    step="50"
+                    placeholder="Contoh: 500"
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors pr-14"
+                  />
+                  <span class="absolute inset-y-0 right-0 flex items-center pr-4 text-xs font-medium text-stone-400 pointer-events-none">
+                    Pax
+                  </span>
+                </div>
+              </div>
+
+              <!-- Row 4 Right: Tanggal Event * (Calendar Icon) -->
+              <div>
+                <label for="eventDateCatering" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                  </svg>
+                  <span>Tanggal Event <span class="text-[#E63946]">*</span></span>
+                </label>
+                <div class="relative">
+                  <input
+                    id="eventDateCatering"
+                    v-model="formCatering.eventDate"
+                    :min="minDate"
+                    type="date"
+                    required
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              <!-- Row 5 Left: Jumlah Porsi Prasmanan (People Icon + Pax) -->
+              <div>
+                <label for="prasmananPaxInput" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                  </svg>
+                  <span>Jumlah Porsi Prasmanan</span>
+                </label>
+                <div class="relative">
+                  <input
+                    id="prasmananPaxInput"
+                    v-model.number="formCatering.prasmananPax"
+                    type="number"
+                    min="0"
+                    step="50"
+                    placeholder="Contoh: 500"
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors pr-14"
+                  />
+                  <span class="absolute inset-y-0 right-0 flex items-center pr-4 text-xs font-medium text-stone-400 pointer-events-none">
+                    Pax
+                  </span>
+                </div>
+              </div>
+
+              <!-- Row 5 Right: Your Instagram (Instagram Icon) -->
+              <div>
+                <label for="clientInstagramCatering" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162z"/>
+                  </svg>
+                  <span>Your Instagram</span>
+                </label>
+                <input
+                  id="clientInstagramCatering"
+                  v-model="formCatering.instagram"
+                  type="text"
+                  placeholder="Contoh: @username &amp; @secondusername"
+                  class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors"
+                />
+              </div>
+
+              <!-- Row 6 Left: Jumlah Porsi Nasi Box (Box Icon + Pax) -->
+              <div>
+                <label for="nasiBoxPaxInput" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                  </svg>
+                  <span>Jumlah Porsi Nasi Box</span>
+                </label>
+                <div class="relative">
+                  <input
+                    id="nasiBoxPaxInput"
+                    v-model.number="formCatering.nasiBoxPax"
+                    type="number"
+                    min="0"
+                    step="25"
+                    placeholder="Contoh: 500"
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors pr-14"
+                  />
+                  <span class="absolute inset-y-0 right-0 flex items-center pr-4 text-xs font-medium text-stone-400 pointer-events-none">
+                    Pax
+                  </span>
+                </div>
+              </div>
+
+              <!-- Row 6 Right: Total (Currency Icon) -->
+              <div>
+                <label for="totalPriceCatering" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  <span>Total</span>
+                </label>
+                <div class="relative">
+                  <input
+                    id="totalPriceCatering"
+                    :value="formatCurrency(cateringTotal)"
+                    type="text"
+                    readonly
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#12161E] border border-white/10 text-[#C5A265] font-bold text-xs sm:text-sm focus:outline-none cursor-default"
+                  />
+                  <span class="absolute inset-y-0 right-0 flex items-center pr-4 text-[11px] text-stone-400">
+                    DP Flat: Rp 1.000.000
+                  </span>
+                </div>
+              </div>
+
+              <!-- Extra Row: Email Pemesan (Required per PRD for Notifications) -->
+              <div class="md:col-span-2">
+                <label for="clientEmailCatering" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                  </svg>
+                  <span>Email Pemesan (Untuk Notifikasi Booking) <span class="text-[#E63946]">*</span></span>
+                </label>
+                <input
+                  id="clientEmailCatering"
+                  v-model="formCatering.email"
+                  type="email"
+                  required
+                  placeholder="Contoh: sarah@gmail.com"
+                  class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors"
+                />
+              </div>
+
+            </div>
+
+            <!-- Submit Button (ORDER) -->
+            <div class="pt-6 sm:pt-8 text-center space-y-3">
+              <button
+                type="submit"
+                class="inline-flex items-center justify-center gap-2.5 py-3.5 px-12 sm:px-16 rounded-full bg-gradient-to-r from-[#700B11] to-[#8C1B25] hover:from-[#851019] hover:to-[#A31F2E] text-white font-semibold text-xs sm:text-sm tracking-wider uppercase transition-all duration-300 shadow-[0_4px_24px_rgba(112,11,17,0.55)] hover:shadow-[0_8px_32px_rgba(112,11,17,0.7)] hover:scale-[1.02] active:scale-[0.98] border border-[#941A29]/70 cursor-pointer"
+              >
+                <svg class="w-4 h-4 -rotate-45 fill-current" viewBox="0 0 20 20">
+                  <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"/>
+                </svg>
+                <span>ORDER</span>
+              </button>
+
+              <div class="flex items-center justify-center gap-2 text-[11px] sm:text-xs text-stone-400">
+                <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span>
+                  Hubungi admin untuk ketersediaan tanggal
+                </span>
+              </div>
+            </div>
+          </form>
+
+          <!-- ========================================================================= -->
+          <!-- C. FORM WEDDING (Paket Lengkap All-in-One: Dekor, Catering, MUA, dsb.)    -->
+          <!-- ========================================================================= -->
+          <form
+            v-else-if="activeCategory === 'wedding'"
+            @submit.prevent="goToPaymentStep"
+            class="space-y-6 sm:space-y-7 relative z-10"
+          >
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 lg:gap-x-12 gap-y-5 sm:gap-y-6">
+
+              <!-- Row 1 Left: Paket Wedding All-in-One * -->
+              <div>
+                <label for="packageSelectWedding" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                  </svg>
+                  <span>Paket Wedding All-in-One <span class="text-[#E63946]">*</span></span>
+                </label>
+                <div class="relative">
+                  <select
+                    id="packageSelectWedding"
+                    v-model="formWedding.packageSlug"
+                    required
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors appearance-none cursor-pointer"
+                  >
+                    <option v-for="pkg in weddingPackages" :key="pkg.slug" :value="pkg.slug" class="bg-[#18202C] text-white">
+                      {{ pkg.name }} — {{ formatCurrency(pkg.price) }} ({{ pkg.guestPill }})
+                    </option>
+                  </select>
+                  <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-[#C5A265]">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Row 1 Right: Nama Mempelai / Pemesan * -->
+              <div>
+                <label for="clientNameWedding" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                  </svg>
+                  <span>Nama Mempelai / Pemesan <span class="text-[#E63946]">*</span></span>
+                </label>
+                <input
+                  id="clientNameWedding"
+                  v-model="formWedding.name"
+                  type="text"
+                  required
+                  placeholder="Contoh: Sarah &amp; Reza"
+                  class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors"
+                />
+              </div>
+
+              <!-- Row 2 Left: Konsep Pernikahan * -->
+              <div>
+                <label for="themeSelectWedding" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+                  </svg>
+                  <span>Konsep &amp; Tema Pernikahan <span class="text-[#E63946]">*</span></span>
+                </label>
+                <div class="relative">
+                  <select
+                    id="themeSelectWedding"
+                    v-model="formWedding.theme"
+                    required
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors appearance-none cursor-pointer"
+                  >
+                    <option value="Modern Romantic Elegance" class="bg-[#18202C]">Modern Romantic Elegance (Floral Arch)</option>
+                    <option value="Tradisional Jawa Paes Ageng &amp; Gebyok" class="bg-[#18202C]">Tradisional Jawa Paes Ageng &amp; Gebyok</option>
+                    <option value="Tradisional Sunda Siger &amp; Jasmine" class="bg-[#18202C]">Tradisional Sunda Siger &amp; Jasmine</option>
+                    <option value="Intimate Rustic Botanical Garden" class="bg-[#18202C]">Intimate Rustic Botanical Garden</option>
+                    <option value="Luxury Royal Maroon &amp; Champagne Gold" class="bg-[#18202C]">Luxury Royal Maroon &amp; Champagne Gold</option>
+                  </select>
+                  <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-[#C5A265]">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Row 2 Right: No. WhatsApp * -->
+              <div>
+                <label for="clientPhoneWedding" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+                  </svg>
+                  <span>No. WhatsApp <span class="text-[#E63946]">*</span></span>
+                </label>
+                <input
+                  id="clientPhoneWedding"
+                  v-model="formWedding.phone"
+                  type="tel"
+                  required
+                  placeholder="Contoh: 0812xxxxxxxx"
+                  class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors"
+                />
+              </div>
+
+              <!-- Row 3 Left: Tipe Venue * -->
+              <div>
+                <label for="venueTypeWedding" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                  </svg>
+                  <span>Tipe Venue <span class="text-[#E63946]">*</span></span>
+                </label>
+                <div class="relative">
+                  <select
+                    id="venueTypeWedding"
+                    v-model="formWedding.venueType"
+                    required
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors appearance-none cursor-pointer"
+                  >
+                    <option value="Gedung / Ballroom" class="bg-[#18202C]">Gedung / Ballroom</option>
+                    <option value="Hotel Bintang" class="bg-[#18202C]">Hotel Bintang</option>
+                    <option value="Outdoor Garden / Villa" class="bg-[#18202C]">Outdoor Garden / Villa</option>
+                    <option value="Kediaman Pribadi / Rumah" class="bg-[#18202C]">Kediaman Pribadi / Rumah</option>
+                  </select>
+                  <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-[#C5A265]">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Row 3 Right: Venue * -->
+              <div>
+                <label for="venueAddressWedding" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  </svg>
+                  <span>Venue <span class="text-[#E63946]">*</span></span>
+                </label>
+                <input
+                  id="venueAddressWedding"
+                  v-model="formWedding.venue"
+                  type="text"
+                  required
+                  placeholder="Enter Your Venue"
+                  class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors"
+                />
+              </div>
+
+              <!-- Row 4 Left: Estimasi Jumlah Tamu -->
+              <div>
+                <label for="guestCountWedding" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                  </svg>
+                  <span>Estimasi Tamu Undangan</span>
+                </label>
+                <div class="relative">
+                  <input
+                    id="guestCountWedding"
+                    v-model.number="formWedding.guestCount"
+                    type="number"
+                    min="50"
+                    step="50"
+                    placeholder="Contoh: 300"
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors pr-14"
+                  />
+                  <span class="absolute inset-y-0 right-0 flex items-center pr-4 text-xs font-medium text-stone-400 pointer-events-none">
+                    Pax
+                  </span>
+                </div>
+              </div>
+
+              <!-- Row 4 Right: Tanggal Event * -->
+              <div>
+                <label for="eventDateWedding" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                  </svg>
+                  <span>Tanggal Event <span class="text-[#E63946]">*</span></span>
+                </label>
+                <div class="relative">
+                  <input
+                    id="eventDateWedding"
+                    v-model="formWedding.eventDate"
+                    :min="minDate"
+                    type="date"
+                    required
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              <!-- Row 5 Left: Email Pemesan * -->
+              <div>
+                <label for="clientEmailWedding" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                  </svg>
+                  <span>Email Pemesan <span class="text-[#E63946]">*</span></span>
+                </label>
+                <input
+                  id="clientEmailWedding"
+                  v-model="formWedding.email"
+                  type="email"
+                  required
+                  placeholder="Contoh: sarah@gmail.com"
+                  class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors"
+                />
+              </div>
+
+              <!-- Row 5 Right: Your Instagram -->
+              <div>
+                <label for="clientInstagramWedding" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162z"/>
+                  </svg>
+                  <span>Your Instagram</span>
+                </label>
+                <input
+                  id="clientInstagramWedding"
+                  v-model="formWedding.instagram"
+                  type="text"
+                  placeholder="Contoh: @username &amp; @secondusername"
+                  class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors"
+                />
+              </div>
+
+              <!-- Row 6 Left: Catatan Khusus -->
+              <div>
+                <label for="specialNotesWedding" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                  </svg>
+                  <span>Catatan Khusus / Request Tambahan</span>
+                </label>
+                <input
+                  id="specialNotesWedding"
+                  v-model="formWedding.notes"
+                  type="text"
+                  placeholder="Contoh: Request MUA adat Jawa &amp; tambahan 2 menu stall"
+                  class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#18202C] border border-white/10 text-white placeholder-stone-500 text-xs sm:text-sm focus:outline-none focus:border-[#C5A265] transition-colors"
+                />
+              </div>
+
+              <!-- Row 6 Right: Total Biaya Paket Wedding -->
+              <div>
+                <label for="totalPriceWedding" class="flex items-center gap-2 text-xs sm:text-[13px] font-medium text-stone-300 mb-2">
+                  <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  <span>Total Harga Paket Wedding</span>
+                </label>
+                <div class="relative">
+                  <input
+                    id="totalPriceWedding"
+                    :value="formatCurrency(selectedWeddingPackage ? selectedWeddingPackage.price : 0)"
+                    type="text"
+                    readonly
+                    class="w-full px-4 py-3 rounded-xl sm:rounded-2xl bg-[#12161E] border border-white/10 text-[#C5A265] font-semibold text-xs sm:text-sm focus:outline-none cursor-default"
+                  />
+                  <span class="absolute inset-y-0 right-0 flex items-center pr-4 text-[11px] text-stone-400">
+                    DP Flat: Rp 1.000.000
+                  </span>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Submit Button (ORDER) -->
+            <div class="pt-6 sm:pt-8 text-center space-y-3">
+              <button
+                type="submit"
+                class="inline-flex items-center justify-center gap-2.5 py-3.5 px-12 sm:px-16 rounded-full bg-gradient-to-r from-[#700B11] to-[#8C1B25] hover:from-[#851019] hover:to-[#A31F2E] text-white font-semibold text-xs sm:text-sm tracking-wider uppercase transition-all duration-300 shadow-[0_4px_24px_rgba(112,11,17,0.55)] hover:shadow-[0_8px_32px_rgba(112,11,17,0.7)] hover:scale-[1.02] active:scale-[0.98] border border-[#941A29]/70 cursor-pointer"
+              >
+                <svg class="w-4 h-4 -rotate-45 fill-current" viewBox="0 0 20 20">
+                  <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"/>
+                </svg>
+                <span>ORDER</span>
+              </button>
+
+              <div class="flex items-center justify-center gap-2 text-[11px] sm:text-xs text-stone-400">
+                <svg class="w-4 h-4 text-[#C5A265]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span>
+                  Hubungi admin untuk ketersediaan tanggal &amp; verifikasi DP (Batas unggah bukti 24 jam).
+                </span>
+              </div>
+            </div>
+          </form>
+
         </div>
       </div>
     </section>
@@ -537,21 +1214,33 @@
               </div>
 
               <!-- Order Summary Info Box -->
-              <div class="p-4 rounded-xl bg-[#141A24] border border-white/10 space-y-1.5 text-xs text-stone-300">
+              <div class="p-4 rounded-xl bg-[#141A24] border border-white/10 space-y-2 text-xs text-stone-300">
                 <div class="flex justify-between items-center">
                   <span class="text-stone-400">Nomor Pesanan:</span>
                   <span class="text-white font-mono font-bold">{{ orderCode }}</span>
                 </div>
                 <div class="flex justify-between items-center">
+                  <span class="text-stone-400">Kategori:</span>
+                  <span class="text-white uppercase font-medium">{{ currentOrderSummary.categoryLabel }}</span>
+                </div>
+                <div class="flex justify-between items-center">
                   <span class="text-stone-400">Paket:</span>
-                  <span class="text-white">{{ selectedPackage?.name }}</span>
+                  <span class="text-white font-medium text-right max-w-[240px] truncate">{{ currentOrderSummary.packageName }}</span>
                 </div>
                 <div class="flex justify-between items-center">
                   <span class="text-stone-400">Tanggal Acara:</span>
-                  <span class="text-[#DFBA73]">{{ form.eventDate }} (WIB)</span>
+                  <span class="text-[#DFBA73]">{{ currentOrderSummary.eventDate }} (WIB)</span>
                 </div>
-                <div class="flex justify-between items-center pt-2 border-t border-white/10 font-semibold">
-                  <span class="text-stone-300">Nominal Transfer DP:</span>
+                <div class="flex justify-between items-center">
+                  <span class="text-stone-400">Lokasi Venue:</span>
+                  <span class="text-stone-200">{{ currentOrderSummary.venue }}</span>
+                </div>
+                <div class="flex justify-between items-center pt-2 border-t border-white/10">
+                  <span class="text-stone-400">Total Harga:</span>
+                  <span class="text-sm font-semibold text-white">{{ formatCurrency(currentOrderSummary.totalPrice) }}</span>
+                </div>
+                <div class="flex justify-between items-center pt-1 font-semibold">
+                  <span class="text-stone-300">Nominal Transfer DP Flat:</span>
                   <span class="text-base text-[#DFBA73]">Rp 1.000.000</span>
                 </div>
               </div>
@@ -577,13 +1266,9 @@
                   <!-- Large Golden Picture & Arrow Down Icon matching Figma -->
                   <div class="mb-5 text-[#DFBA73] group-hover:scale-105 transition-transform duration-300">
                     <svg class="w-20 h-20 sm:w-24 sm:h-24" fill="none" stroke="currentColor" stroke-width="1.3" viewBox="0 0 80 80">
-                      <!-- Picture Frame with rounded corners -->
                       <rect x="10" y="10" width="55" height="55" rx="12" stroke="currentColor"/>
-                      <!-- Mountains inside -->
                       <path d="M12 50l12-16a4 4 0 016 0l16 21" stroke="currentColor" stroke-linecap="round"/>
-                      <!-- Small Sun/Dot inside -->
                       <circle cx="26" cy="26" r="3.5" fill="currentColor"/>
-                      <!-- Arrow Down on top right -->
                       <path d="M60 18v22m0 0l-7-7m7 7l7-7" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
                     </svg>
                   </div>
@@ -598,7 +1283,6 @@
                     type="button"
                     class="py-2.5 px-7 rounded-full border border-[#DFBA73] text-[#DFBA73] group-hover:bg-[#DFBA73] group-hover:text-black transition-all flex items-center gap-2 text-xs sm:text-sm font-medium tracking-wide shadow-sm"
                   >
-                    <!-- Cloud Upload Icon -->
                     <svg class="w-4 h-4 fill-none stroke-current" stroke-width="2" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                     </svg>
@@ -692,8 +1376,9 @@
 
         <div class="p-4 rounded-2xl bg-[#120E0D] border border-white/10 text-xs text-left space-y-1.5 text-stone-300">
           <p><span class="text-stone-400">Nomor Pesanan:</span> <strong class="font-mono text-white text-sm">{{ orderCode }}</strong></p>
-          <p><span class="text-stone-400">Paket:</span> {{ selectedPackage?.name }}</p>
-          <p><span class="text-stone-400">Tanggal Acara:</span> {{ form.eventDate }}</p>
+          <p><span class="text-stone-400">Kategori:</span> {{ currentOrderSummary.categoryLabel }}</p>
+          <p><span class="text-stone-400">Paket:</span> {{ currentOrderSummary.packageName }}</p>
+          <p><span class="text-stone-400">Tanggal Acara:</span> {{ currentOrderSummary.eventDate }}</p>
           <p><span class="text-stone-400">Status:</span> <span class="text-[#E6CA65] font-semibold">Menunggu Verifikasi Admin</span></p>
         </div>
 
@@ -736,6 +1421,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
+import { useAuthStore } from "../stores/auth.js";
 import Navbar from "../components/common/Navbar.vue";
 import Footer from "../components/common/Footer.vue";
 
@@ -743,11 +1429,21 @@ import Footer from "../components/common/Footer.vue";
 import HeroFloralBg from "../assets/portofolio-bg.png";
 
 const route = useRoute();
+const authStore = useAuthStore();
 
 // Step state: 1 = Form Pemesanan, 2 = Booking Tanggal & Pembayaran (Matching Figma)
 const currentStep = ref(1);
 
-// 8 Decoration Packages from Catalog
+// Active category: 'dekor' | 'catering' | 'wedding'
+const activeCategory = ref("dekor");
+
+const switchCategory = (cat) => {
+  activeCategory.value = cat;
+};
+
+// =========================================================================
+// 1. DATA PAKET DEKORASI
+// =========================================================================
 const decorPackages = [
   { slug: "economy-wedding",   name: "Economy Wedding",   price: 3000000, stageWidth: "6 Meter" },
   { slug: "dahlia-wedding",    name: "Dahlia Wedding",    price: 5500000, stageWidth: "8 Meter" },
@@ -759,8 +1455,7 @@ const decorPackages = [
   { slug: "custom-package",    name: "Custom Package",    price: 15000000, stageWidth: "Custom" },
 ];
 
-// Form state
-const form = reactive({
+const formDecor = reactive({
   packageSlug: "dahlia-wedding",
   name: "",
   phone: "",
@@ -774,7 +1469,136 @@ const form = reactive({
   instagram: "",
 });
 
-// Payment method selection matching Figma: 'bca' or 'mandiri'
+const selectedDecorPackage = computed(() => {
+  return decorPackages.find(p => p.slug === formDecor.packageSlug) || decorPackages[0];
+});
+
+const onDecorPackageChange = () => {
+  if (selectedDecorPackage.value) {
+    const match = selectedDecorPackage.value.stageWidth.match(/\d+/);
+    if (match) {
+      formDecor.stageWidth = parseInt(match[0], 10);
+    }
+  }
+};
+
+// =========================================================================
+// 2. DATA PAKET CATERING (Prasmanan, Stall, Nasi Box)
+// =========================================================================
+const prasmananOptions = [
+  { slug: "prasmanan-silver", name: "Paket Prasmanan Silver", price: 21000 },
+  { slug: "prasmanan-gold",   name: "Paket Prasmanan Gold",   price: 27000 },
+  { slug: "prasmanan-deluxe", name: "Paket Prasmanan Deluxe", price: 35000 },
+];
+
+const stallOptions = [
+  { slug: "stall-sate-ayam",      name: "Stall Sate Ayam Madura", price: 15000 },
+  { slug: "stall-zuppa-soup",     name: "Stall Zuppa Soup",     price: 16000 },
+  { slug: "stall-kambing-guling", name: "Stall Kambing Guling", price: 25000 },
+];
+
+const nasiBoxOptions = [
+  { slug: "nasi-box-silver", name: "Nasi Box Silver", price: 22000 },
+  { slug: "nasi-box-gold",   name: "Nasi Box Gold",   price: 28000 },
+  { slug: "nasi-box-deluxe", name: "Nasi Box Deluxe", price: 35000 },
+];
+
+const formCatering = reactive({
+  prasmananSlug: "prasmanan-silver",
+  stallSlug: "stall-sate-ayam",
+  nasiBoxSlug: "none",
+  prasmananPax: 500,
+  stallPax: 200,
+  nasiBoxPax: 0,
+  name: "",
+  phone: "",
+  email: "",
+  venue: "",
+  eventDate: "",
+  instagram: "",
+  notes: "",
+});
+
+const selectedPrasmanan = computed(() => {
+  return prasmananOptions.find(p => p.slug === formCatering.prasmananSlug);
+});
+
+const selectedStall = computed(() => {
+  return stallOptions.find(s => s.slug === formCatering.stallSlug);
+});
+
+const selectedNasiBox = computed(() => {
+  return nasiBoxOptions.find(n => n.slug === formCatering.nasiBoxSlug);
+});
+
+// Real-time calculation for Catering Total
+const cateringTotal = computed(() => {
+  const pPrice = selectedPrasmanan.value ? selectedPrasmanan.value.price : 0;
+  const sPrice = selectedStall.value ? selectedStall.value.price : 0;
+  const nPrice = selectedNasiBox.value ? selectedNasiBox.value.price : 0;
+
+  const pTotal = formCatering.prasmananSlug !== "none" ? pPrice * (formCatering.prasmananPax || 0) : 0;
+  const sTotal = formCatering.stallSlug !== "none" ? sPrice * (formCatering.stallPax || 0) : 0;
+  const nTotal = formCatering.nasiBoxSlug !== "none" ? nPrice * (formCatering.nasiBoxPax || 0) : 0;
+
+  return pTotal + sTotal + nTotal;
+});
+
+// =========================================================================
+// 3. DATA PAKET WEDDING (All-in-One: Dekorasi + Catering + MUA + WO)
+// =========================================================================
+const weddingPackages = [
+  {
+    slug: "economy-wedding-package",
+    name: "Economy Package",
+    price: 28500000,
+    guestPill: "200 Pax",
+    guestCount: 200
+  },
+  {
+    slug: "premium-wedding-package",
+    name: "Premium Package",
+    price: 45000000,
+    guestPill: "400 Pax",
+    guestCount: 400
+  },
+  {
+    slug: "luxury-wedding-package",
+    name: "Luxury Package",
+    price: 68000000,
+    guestPill: "600 Pax",
+    guestCount: 600
+  },
+  {
+    slug: "custom-wedding-package",
+    name: "Custom Package",
+    price: 85000000,
+    guestPill: "Custom Tailored",
+    guestCount: 500
+  },
+];
+
+const formWedding = reactive({
+  packageSlug: "economy-wedding-package",
+  name: "",
+  phone: "",
+  email: "",
+  theme: "Modern Romantic Elegance",
+  venueType: "Gedung / Ballroom",
+  venue: "",
+  guestCount: 200,
+  eventDate: "",
+  instagram: "",
+  notes: "",
+});
+
+const selectedWeddingPackage = computed(() => {
+  return weddingPackages.find(w => w.slug === formWedding.packageSlug) || weddingPackages[0];
+});
+
+// =========================================================================
+// STEP 2: SUMMARY & PAYMENT STATE
+// =========================================================================
 const selectedPaymentMethod = ref("bca");
 
 // Minimum date is tomorrow (no past dates, per business rule)
@@ -784,20 +1608,48 @@ const minDate = computed(() => {
   return tomorrow.toISOString().split("T")[0];
 });
 
-// Currently selected package
-const selectedPackage = computed(() => {
-  return decorPackages.find(p => p.slug === form.packageSlug) || decorPackages[0];
-});
-
-// Synchronize stage width when package changes
-const onPackageChange = () => {
-  if (selectedPackage.value) {
-    const match = selectedPackage.value.stageWidth.match(/\d+/);
-    if (match) {
-      form.stageWidth = parseInt(match[0], 10);
+// Unified Order Summary across all 3 categories
+const currentOrderSummary = computed(() => {
+  if (activeCategory.value === "catering") {
+    const parts = [];
+    if (selectedPrasmanan.value && formCatering.prasmananSlug !== "none") {
+      parts.push(`${selectedPrasmanan.value.name} (${formCatering.prasmananPax} Pax)`);
     }
+    if (selectedStall.value && formCatering.stallSlug !== "none") {
+      parts.push(`${selectedStall.value.name} (${formCatering.stallPax} Pax)`);
+    }
+    if (selectedNasiBox.value && formCatering.nasiBoxSlug !== "none") {
+      parts.push(`${selectedNasiBox.value.name} (${formCatering.nasiBoxPax} Box)`);
+    }
+    return {
+      categoryLabel: "Catering Pernikahan",
+      packageName: parts.length > 0 ? parts.join(" + ") : "Custom Catering",
+      eventDate: formCatering.eventDate,
+      venue: formCatering.venue,
+      name: formCatering.name,
+      totalPrice: cateringTotal.value,
+    };
+  } else if (activeCategory.value === "wedding") {
+    return {
+      categoryLabel: "Paket Wedding All-in-One",
+      packageName: selectedWeddingPackage.value?.name || "Wedding Package",
+      eventDate: formWedding.eventDate,
+      venue: formWedding.venue,
+      name: formWedding.name,
+      totalPrice: selectedWeddingPackage.value?.price || 0,
+    };
+  } else {
+    // Dekor
+    return {
+      categoryLabel: "Dekorasi Pelaminan",
+      packageName: selectedDecorPackage.value?.name || "Dekorasi",
+      eventDate: formDecor.eventDate,
+      venue: formDecor.venue,
+      name: formDecor.name,
+      totalPrice: selectedDecorPackage.value?.price || 0,
+    };
   }
-};
+});
 
 // Currency formatter
 const formatCurrency = (val) => {
@@ -819,29 +1671,37 @@ const isPdf = ref(false);
 
 const adminPhone = "628156870982";
 
-// Pre-fill package if routed with package parameter
-onMounted(() => {
-  const pkgParam = route.params.packageId || route.query.paket;
-  if (pkgParam) {
-    const found = decorPackages.find(p => p.slug === pkgParam || p.slug.includes(pkgParam));
-    if (found) {
-      form.packageSlug = found.slug;
-      onPackageChange();
-    }
-  }
-});
-
 // Step 1 -> Step 2 (Transition to "Booking Tanggal" page)
 const goToPaymentStep = () => {
-  if (!form.name || !form.phone || !form.email || !form.eventDate || !form.venue) {
-    alert("Harap lengkapi semua data wajib (*).");
-    return;
+  const summary = currentOrderSummary.value;
+
+  if (activeCategory.value === "catering") {
+    if (!formCatering.name || !formCatering.phone || !formCatering.email || !formCatering.eventDate || !formCatering.venue) {
+      alert("Harap lengkapi semua kolom wajib (*) untuk pemesanan catering.");
+      return;
+    }
+    if (cateringTotal.value <= 0) {
+      alert("Harap pilih minimal satu menu prasmanan, stall, atau nasi box.");
+      return;
+    }
+  } else if (activeCategory.value === "wedding") {
+    if (!formWedding.name || !formWedding.phone || !formWedding.email || !formWedding.eventDate || !formWedding.venue) {
+      alert("Harap lengkapi semua kolom wajib (*) untuk pemesanan wedding.");
+      return;
+    }
+  } else {
+    // Dekor
+    if (!formDecor.name || !formDecor.phone || !formDecor.email || !formDecor.eventDate || !formDecor.venue) {
+      alert("Harap lengkapi semua kolom wajib (*) untuk pemesanan dekorasi.");
+      return;
+    }
   }
 
-  // Generate order code
+  // Generate category-specific order code
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const randomSuffix = Math.floor(100 + Math.random() * 900);
-  orderCode.value = `KL-DK-${dateStr}-${randomSuffix}`;
+  const prefix = activeCategory.value === "catering" ? "KL-CT" : activeCategory.value === "wedding" ? "KL-WD" : "KL-DK";
+  orderCode.value = `${prefix}-${dateStr}-${randomSuffix}`;
 
   // Switch to Step 2 (Booking Tanggal page)
   currentStep.value = 2;
@@ -854,7 +1714,7 @@ const handleFileUpload = (event) => {
   if (!file) return;
 
   if (file.size > 5 * 1024 * 1024) {
-    alert("Ukuran file maksimal adalah 5 MB");
+    alert("Ukuran file maksimal adalah 5MB.");
     return;
   }
 
@@ -885,9 +1745,76 @@ const submitProofAndComplete = () => {
 
 // WhatsApp Confirmation URL according to PRD 4.6 Poin 3
 const whatsappConfirmationUrl = computed(() => {
-  const pkgName = selectedPackage.value ? selectedPackage.value.name : "Dekorasi";
+  const pkgName = currentOrderSummary.value.packageName;
   const msg = `Halo admin, saya sudah mengunggah bukti transfer DP untuk pesanan *${orderCode.value}* paket *${pkgName}*.`;
   return `https://wa.me/${adminPhone}?text=${encodeURIComponent(msg)}`;
+});
+
+// Auto-fill logged-in user profile & pre-fill package parameter from URL
+onMounted(() => {
+  // Pre-fill user data if logged in
+  if (authStore.user) {
+    const uName = authStore.user.name || "";
+    const uPhone = authStore.user.phone || "";
+    const uEmail = authStore.user.email || "";
+
+    formDecor.name = uName;
+    formDecor.phone = uPhone;
+    formDecor.email = uEmail;
+
+    formCatering.name = uName;
+    formCatering.phone = uPhone;
+    formCatering.email = uEmail;
+
+    formWedding.name = uName;
+    formWedding.phone = uPhone;
+    formWedding.email = uEmail;
+  }
+
+  // Pre-fill from route parameters or queries
+  const pkgParam = route.params.packageId || route.query.paket || route.query.package;
+  const catParam = route.query.category;
+
+  if (catParam === "catering") {
+    activeCategory.value = "catering";
+  } else if (catParam === "wedding") {
+    activeCategory.value = "wedding";
+  } else if (catParam === "dekor") {
+    activeCategory.value = "dekor";
+  }
+
+  if (pkgParam) {
+    // Check if it matches catering packages
+    const foundPrasmanan = prasmananOptions.find(p => p.slug === pkgParam || p.slug.includes(pkgParam));
+    const foundStall = stallOptions.find(s => s.slug === pkgParam || s.slug.includes(pkgParam));
+    const foundNasiBox = nasiBoxOptions.find(n => n.slug === pkgParam || n.slug.includes(pkgParam));
+
+    if (foundPrasmanan || foundStall || foundNasiBox) {
+      activeCategory.value = "catering";
+      if (foundPrasmanan) formCatering.prasmananSlug = foundPrasmanan.slug;
+      if (foundStall) formCatering.stallSlug = foundStall.slug;
+      if (foundNasiBox) formCatering.nasiBoxSlug = foundNasiBox.slug;
+      return;
+    }
+
+    // Check if it matches wedding packages
+    const foundWedding = weddingPackages.find(w => w.slug === pkgParam || w.slug.includes(pkgParam));
+    if (foundWedding) {
+      activeCategory.value = "wedding";
+      formWedding.packageSlug = foundWedding.slug;
+      formWedding.guestCount = foundWedding.guestCount;
+      return;
+    }
+
+    // Check if it matches decor packages
+    const foundDecor = decorPackages.find(p => p.slug === pkgParam || p.slug.includes(pkgParam));
+    if (foundDecor) {
+      activeCategory.value = "dekor";
+      formDecor.packageSlug = foundDecor.slug;
+      onDecorPackageChange();
+      return;
+    }
+  }
 });
 </script>
 
@@ -895,7 +1822,7 @@ const whatsappConfirmationUrl = computed(() => {
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: scale(0.97);
+    transform: scale(0.96);
   }
   to {
     opacity: 1;
@@ -905,5 +1832,10 @@ const whatsappConfirmationUrl = computed(() => {
 
 .animate-fade-in {
   animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8) sepia(50%) saturate(1000%) hue-rotate(5deg);
+  cursor: pointer;
 }
 </style>
