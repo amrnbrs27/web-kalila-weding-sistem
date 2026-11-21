@@ -25,6 +25,7 @@ const validateQuery = (schema) => (req, res, next) => {
     return next(err);
   }
   req.query = result.data; // pakai data yang sudah dibersihkan
+  req.validatedQuery = result.data; // properti eksplisit untuk pembacaan tipe data hasil validasi Zod
   next();
 };
 

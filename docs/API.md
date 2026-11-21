@@ -129,8 +129,18 @@ Masuk ke dalam sistem untuk pelanggan atau admin.
 
 #### Respons Gagal
 - `400 Bad Request`: Format input salah / tidak lengkap.
-- `401 Unauthorized`: Email atau password salah.
+- `401 Unauthorized`: Email atau password salah, atau token lama yang dipakai setelah perubahan password.
 - `403 Forbidden`: Akun dinonaktifkan oleh admin.
+- `429 Too Many Requests`: Melebihi batas maksimal percobaan login yang gagal:
+  - **Lapisan 1 (Per IP):** Maksimal `AUTH_LOGIN_IP_MAX` (default 50 kali) percobaan gagal per 15 menit untuk satu alamat IP.
+  - **Lapisan 2 (Per IP + Email):** Maksimal `AUTH_LOGIN_MAX` (default 10 kali) percobaan gagal per 15 menit untuk kombinasi IP dan email yang sama.
+  - *Catatan: Percobaan login yang berhasil tidak dihitung.*
+
+> **Catatan Keamanan & Arsitektur Autentikasi:**
+> 1. **Pembatalan Token (Token Invalidation):** Ketika password diubah atau direset, seluruh token JWT yang diterbitkan sebelum waktu perubahan password (`iat < floor(passwordChangedAt / 1000)`) otomatis dibatalkan dan ditolak dengan status `401 Unauthorized`.
+> 2. **Dua Lapisan Rate Limiting Login:** Dilindungi pembatas frekuensi ganda (per IP dan per kombinasi IP + Email) dengan `skipSuccessfulRequests: true`.
+> 3. **Konfigurasi Reverse Proxy (`trust proxy`):** Di lingkungan produksi di belakang proxy atau hosting (seperti Nginx, Cloudflare, Railway, dll.), pengembang wajib mengatur `app.set("trust proxy", ...)` sesuai jumlah proxy agar IP pengguna terbaca akurat.
+> 4. **In-Memory Store:** Penyimpanan seluruh pembatas frekuensi berada di memori proses server. Hitungan akan tereset saat server restart dan tidak dibagi antar-instance.
 
 ---
 
@@ -605,3 +615,2304 @@ Menghapus subdokumen gambar berdasarkan `_id` gambar dan menghapus file fisiknya
   }
 }
 ```
+
+---
+
+## 4. Modul Pengaturan (Setting)
+
+Dokumen pengaturan bersifat *singleton* (`key: "main"`) yang menyimpan profil usaha, kontak, info rekening, batas pembayaran, dan kuota acara harian.
+
+### 4.1 Mengambil Pengaturan Publik
+
+Mengembalikan informasi bisnis, kontak, dan nominal DP untuk pengunjung/klien umum. Informasi perbankan dan QRIS **tidak** disertakan demi alasan keamanan.
+
+- **Endpoint:** `GET /api/settings`
+- **Hak Akses:** Publik
+- **Headers:** `Content-Type: application/json`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Pengaturan publik berhasil diambil",
+  "data": {
+    "businessName": "Kalila Wedding, Dekor & Catering",
+    "adminWhatsapp": "6281234567890",
+    "dpAmount": 1000000,
+    "paymentDeadlineHours": 24,
+    "kontak": {
+      "email": "kalila.official@gmail.com",
+      "phone": "081234567890",
+      "address": "Indonesia",
+      "instagram": "@kalila.organizer",
+      "facebook": "",
+      "tiktok": "@kalila.organizer"
+    }
+  }
+}
+```
+
+---
+
+### 4.2 Mengambil Pengaturan Lengkap (Admin)
+
+Mengembalikan konfigurasi lengkap sistem termasuk batas kuota acara harian, informasi rekening, dan URL gambar QRIS.
+
+- **Endpoint:** `GET /api/admin/settings`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Pengaturan admin berhasil diambil",
+  "data": {
+    "businessName": "Kalila Wedding, Dekor & Catering",
+    "adminWhatsapp": "6281234567890",
+    "dpAmount": 1000000,
+    "paymentDeadlineHours": 24,
+    "maxProofAttempts": 3,
+    "rejectionExtensionHours": 6,
+    "maxEventsPerDay": {
+      "dekor": 2,
+      "catering": 2,
+      "wedding": 1
+    },
+    "bankName": "Bank Central Asia (BCA)",
+    "accountNumber": "1234567890",
+    "accountHolder": "Kalila Wedding & Event",
+    "qrisImage": {
+      "url": "https://res.cloudinary.com/kalila/image/upload/v1234/kalila/settings/qris.png"
+    },
+    "kontak": {
+      "email": "kalila.official@gmail.com",
+      "phone": "081234567890",
+      "address": "Indonesia",
+      "instagram": "@kalila.organizer",
+      "facebook": "",
+      "tiktok": "@kalila.organizer"
+    },
+    "notificationRecipients": {
+      "adminEmails": ["admin1@kalila.com", "admin2@kalila.com"],
+      "ownerEmails": ["owner@kalila.com"]
+    },
+    "updatedAt": "2026-11-10T12:00:00.000Z"
+  }
+}
+```
+
+---
+
+### 4.3 Memperbarui Pengaturan (Admin)
+
+Menerima pembaruan parsial (*partial update*) terhadap pengaturan. Field bersarang (`kontak`, `maxEventsPerDay`) yang tidak disebutkan dalam request body tidak akan tertimpa. Field yang tidak dikenal akan ditolak (`400 Bad Request`).
+
+- **Endpoint:** `PUT /api/admin/settings`
+- **Hak Akses:** Khusus Admin
+- **Headers:**
+  - `Content-Type: application/json`
+  - `Authorization: Bearer <admin_token>`
+
+#### Request Body
+```json
+{
+  "businessName": "Kalila Wedding & Event Organizer",
+  "adminWhatsapp": "081234567890",
+  "dpAmount": 1000000,
+  "paymentDeadlineHours": 24,
+  "maxProofAttempts": 3,
+  "rejectionExtensionHours": 6,
+  "maxEventsPerDay": {
+    "dekor": 3,
+    "catering": null
+  },
+  "bankName": "Bank Mandiri",
+  "accountNumber": "9876543210",
+  "accountHolder": "Kalila Organizer",
+  "kontak": {
+    "email": "kontak@kalila.com"
+  }
+}
+```
+
+*Catatan:* `adminWhatsapp` otomatis dinormalisasi dari format `08...` atau `+628...` menjadi `628...`.
+
+#### Respons Berhasil (`200 OK`)
+Mengembalikan objek pengaturan admin yang telah diperbarui.
+
+---
+
+### 4.4 Unggah Gambar QRIS (Admin)
+
+Mengunggah satu gambar QRIS ke folder `kalila/settings` di Cloudinary. Jika sebelumnya sudah ada gambar QRIS, file lama di Cloudinary otomatis dihapus.
+
+- **Endpoint:** `POST /api/admin/settings/qris`
+- **Hak Akses:** Khusus Admin
+- **Headers:**
+  - `Content-Type: multipart/form-data`
+  - `Authorization: Bearer <admin_token>`
+- **Batasan:**
+  - Nama field form-data: `image`.
+  - Format didukung: JPG, PNG, WEBP (divalidasi magic bytes).
+  - Maksimal ukuran: 5 MB.
+  - Dilindungi *rate limiter*.
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Gambar QRIS berhasil diunggah",
+  "data": {
+    "url": "https://res.cloudinary.com/kalila/image/upload/v1234/kalila/settings/qris_new.png"
+  }
+}
+```
+
+---
+
+### 4.5 Menghapus Gambar QRIS (Admin)
+
+Menghapus file gambar QRIS dari Cloudinary dan mengosongkan URL gambar pada database.
+
+- **Endpoint:** `DELETE /api/admin/settings/qris`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Gambar QRIS berhasil dihapus"
+}
+```
+
+---
+
+## 5. Modul Kalender Blokir Admin (`/api/admin/calendar`)
+
+Digunakan oleh admin untuk memantau kalender bulanan dan memblokir tanggal acara per kategori.
+
+### 5.1 Mengambil Kalender Admin Bulanan
+
+Mengembalikan ringkasan setiap hari dalam satu bulan: status blokir (beserta alasan), jumlah acara aktif (booking `terkonfirmasi` dan `berlangsung`), serta ketersediaan.
+
+- **Endpoint:** `GET /api/admin/calendar`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query Parameters:**
+  - `month` (wajib): Format `YYYY-MM`.
+  - `category` (opsional): `"dekor"` | `"catering"` | `"wedding"`.
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Data kalender berhasil diambil",
+  "data": [
+    {
+      "date": "2027-01-15",
+      "isBlocked": true,
+      "blocks": [
+        {
+          "id": "672e25d045de67ab89012399",
+          "category": "dekor",
+          "reason": "Maintenance gudang properti"
+        }
+      ],
+      "effectiveEventCounts": {
+        "dekor": 1,
+        "catering": 0,
+        "wedding": 0
+      },
+      "rawEventCounts": {
+        "dekor": 1,
+        "catering": 0,
+        "wedding": 0
+      },
+      "availability": {
+        "dekor": { "status": "diblokir", "available": false },
+        "catering": { "status": "tersedia", "available": true },
+        "wedding": { "status": "diblokir", "available": false }
+      }
+    }
+  ]
+}
+```
+
+---
+
+### 5.2 Membuat Blokir Tanggal (Admin)
+
+Memblokir tanggal tunggal (`date`) atau rentang tanggal (`dateFrom` dan `dateTo`, maks. 31 hari).
+Operasi bersifat idempoten: jika suatu tanggal sudah diblokir, tanggal tersebut dilaporkan sebagai `skipped` tanpa membuat duplikasi ataupun menimbulkan error database.
+
+- **Endpoint:** `POST /api/admin/calendar/blocks`
+- **Hak Akses:** Khusus Admin
+- **Headers:**
+  - `Content-Type: application/json`
+  - `Authorization: Bearer <admin_token>`
+
+#### Request Body (Tanggal Tunggal)
+```json
+{
+  "category": "dekor",
+  "date": "2027-02-14",
+  "reason": "Acara internal vendor"
+}
+```
+
+#### Request Body (Rentang Tanggal)
+```json
+{
+  "category": "catering",
+  "dateFrom": "2027-02-10",
+  "dateTo": "2027-02-12",
+  "reason": "Renovasi dapur sentral"
+}
+```
+
+#### Respons Berhasil (`201 Created`)
+```json
+{
+  "success": true,
+  "message": "Proses pemblokiran kalender selesai",
+  "data": {
+    "created": [
+      {
+        "id": "672e26e045de67ab89012401",
+        "date": "2027-02-10",
+        "category": "catering",
+        "reason": "Renovasi dapur sentral"
+      }
+    ],
+    "skipped": [
+      {
+        "date": "2027-02-11",
+        "reason": "Sudah diblokir sebelumnya"
+      }
+    ]
+  }
+}
+```
+
+#### Respons Gagal
+- `400 Bad Request`: Tanggal di masa lalu, tanggal tidak valid kalender (mis. `2026-02-30`), atau rentang melebihi 31 hari.
+
+---
+
+### 5.3 Menghapus Blokir Tanggal (Admin)
+
+Membuka kembali tanggal yang sebelumnya diblokir.
+
+- **Endpoint:** `DELETE /api/admin/calendar/blocks/:id`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Blokir tanggal kalender berhasil dihapus"
+}
+```
+
+---
+
+## 6. Modul Ketersediaan Tanggal Publik (`/api/availability`)
+
+Digunakan pada frontend oleh pelanggan saat memilih tanggal di katalog paket atau formulir pemesanan.
+
+### 6.1 Mengambil Ketersediaan Tanggal Bulanan (Publik)
+
+Mengembalikan ketersediaan tiap tanggal dalam satu bulan untuk kategori yang dipilih (`dekor`, `catering`, atau `wedding`).
+
+- **Endpoint:** `GET /api/availability`
+- **Hak Akses:** Publik
+- **Query Parameters:**
+  - `category` (wajib): `"dekor"` | `"catering"` | `"wedding"`.
+  - `month` (wajib): Format `YYYY-MM` (maksimal 24 bulan ke depan dari bulan berjalan).
+
+#### Aturan Bisnis Ketersediaan:
+1. **Lewat:** Tanggal sebelum hari ini (WIB) berstatus `"lewat"` (`available: false`).
+2. **Diblokir:** Tanggal yang terdapat blokir admin berstatus `"diblokir"` (`available: false`). Untuk kategori `wedding`, tanggal dianggap diblokir bila salah satu dari `wedding`, `dekor`, atau `catering` diblokir.
+3. **Penuh:** Tanggal yang jumlah acara aktifnya mencapai `maxEventsPerDay[category]` berstatus `"penuh"` (`available: false`). Acara `wedding` memakan kuota 1 dekor dan 1 catering. Untuk kategori `wedding`, tanggal dianggap penuh bila kuota wedding, dekor, atau catering telah tercapai.
+4. **Tersedia:** Tanggal yang tidak lewat, tidak diblokir, dan belum penuh berstatus `"tersedia"` (`available: true`).
+5. **Slot Booking:** Pesanan berstatus `menunggu_dp` dan `menunggu_verifikasi` **tidak menahan slot**. Slot hanya dihitung saat pesanan berstatus `terkonfirmasi` atau `berlangsung`.
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Ketersediaan tanggal berhasil diambil",
+  "data": [
+    {
+      "date": "2027-01-01",
+      "status": "tersedia",
+      "available": true
+    },
+    {
+      "date": "2027-01-02",
+      "status": "diblokir",
+      "available": false
+    },
+    {
+      "date": "2027-01-03",
+      "status": "penuh",
+      "available": false
+    }
+  ]
+}
+```
+
+---
+
+## 7. Modul Pemesanan Pelanggan (`/api/bookings`)
+
+Modul ini digunakan oleh pelanggan terdaftar untuk membuat pemesanan layanan, melihat riwayat pemesanan miliknya, dan melihat detail pemesanan.
+
+### 7.1 Membuat Pesanan Baru (Pelanggan)
+
+Membuat booking baru oleh pelanggan. Status awal pesanan adalah `menunggu_dp` dengan status pembayaran `belum_dp`.
+Pesanan pada status ini **belum menahan slot tanggal** sebelum pembayaran DP disetujui.
+
+- **Endpoint:** `POST /api/bookings`
+- **Hak Akses:** Pelanggan Terautentikasi (`customer` role)
+- **Headers:** `Authorization: Bearer <customer_token>`, `Content-Type: application/json`
+- **Rate Limit:** 10 permintaan per 15 menit per IP.
+
+#### Request Body
+| Field | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `packageId` | String | Ya | ID paket MongoDB yang valid dan aktif |
+| `eventDate` | String | Ya | Format `YYYY-MM-DD` (tidak boleh tanggal lewat, diblokir, atau penuh) |
+| `eventName` | String | Ya | Nama acara (3 - 120 karakter) |
+| `location` | String | Ya | Alamat / lokasi acara (3 - 300 karakter) |
+| `contactName` | String | Tidak | Nama kontak alternatif (default nama akun) |
+| `contactPhone` | String | Tidak | Nomor WA kontak (dinormalisasi ke format `628...`) |
+| `contactEmail` | String | Tidak | Email kontak alternatif |
+| `guestCount` | Number | Kondisional | Wajib untuk kategori `catering` dan `wedding` (integer >= 1) |
+| `notes` | String | Tidak | Catatan tambahan (maks 1000 karakter) |
+| `formData` | Object | Tidak | Data kustom per kategori (Zod strict) |
+
+##### Ketentuan `formData`:
+- `dekor`: `{ themeColor?, customRequest? }`
+- `catering`: `{ menuSelection?, dietaryRestrictions?, serviceType? }` (`serviceType`: `'buffet' \| 'box' \| 'stall' \| 'custom'`)
+- `wedding`: `{ brideName?, groomName?, venueType? }` (`venueType`: `'indoor' \| 'outdoor' \| 'semi-outdoor'`)
+
+```json
+{
+  "packageId": "672e12ab34cd56ef78905678",
+  "eventDate": "2027-02-14",
+  "eventName": "Akad & Resepsi Pernikahan",
+  "location": "Gedung Serbaguna Kalila, Jakarta",
+  "guestCount": 300,
+  "notes": "Harap sediakan karpet merah di lorong utama",
+  "formData": {
+    "brideName": "Siti Nurhaliza",
+    "groomName": "Ahmad Dani",
+    "venueType": "indoor"
+  }
+}
+```
+
+#### Respons Berhasil (`201 Created`)
+```json
+{
+  "success": true,
+  "message": "Pesanan berhasil dibuat. Silakan lakukan pembayaran DP sebelum batas waktu.",
+  "data": {
+    "_id": "673012ab34cd56ef78909999",
+    "bookingNumber": "KL20270214-A8K2",
+    "status": "menunggu_dp",
+    "paymentStatus": "belum_dp",
+    "eventDate": "2027-02-14",
+    "eventName": "Akad & Resepsi Pernikahan",
+    "location": "Gedung Serbaguna Kalila, Jakarta",
+    "category": "wedding",
+    "guestCount": 300,
+    "dpAmount": 1000000,
+    "packageSnapshot": {
+      "name": "Paket Wedding Ruby Luxury",
+      "price": 45000000,
+      "category": "wedding"
+    },
+    "expiresAt": "2026-11-12T02:00:00.000Z",
+    "createdAt": "2026-11-11T02:00:00.000Z"
+  }
+}
+```
+
+#### Respons Gagal
+- `400 Bad Request`: Format tidak valid, tanggal lampau, kategori catering/wedding tanpa guestCount, atau key formData asing.
+- `401 Unauthorized`: Token tidak disertakan atau tidak valid.
+- `403 Forbidden`: Pengguna memiliki role `admin`.
+- `404 Not Found`: Paket tidak ditemukan atau nonaktif.
+- `409 Conflict`: Tanggal sudah penuh/diblokir, atau pemesan sudah memiliki pesanan aktif untuk paket dan tanggal yang sama.
+
+---
+
+### 7.2 Daftar Riwayat Pesanan Saya (Pelanggan)
+
+Mengambil daftar pesanan milik pelanggan yang sedang login. Data sensitif admin (seperti `refundNote` dan detail admin di `statusHistory`) otomatis disanitasi.
+
+- **Endpoint:** `GET /api/bookings/me`
+- **Hak Akses:** Pelanggan Terautentikasi
+- **Headers:** `Authorization: Bearer <customer_token>`
+- **Query Parameters:**
+  - `status` (opsional): Filter status (`menunggu_dp`, `menunggu_verifikasi`, `terkonfirmasi`, `berlangsung`, `selesai`, `dibatalkan`).
+  - `page` (opsional, default 1): Halaman data.
+  - `limit` (opsional, default 10, maks 50): Jumlah item per halaman.
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Daftar pesanan berhasil diambil",
+  "data": {
+    "items": [
+      {
+        "_id": "673012ab34cd56ef78909999",
+        "bookingNumber": "KL20270214-A8K2",
+        "category": "wedding",
+        "eventDate": "2027-02-14",
+        "eventName": "Akad & Resepsi Pernikahan",
+        "location": "Gedung Serbaguna Kalila, Jakarta",
+        "status": "menunggu_dp",
+        "paymentStatus": "belum_dp",
+        "dpAmount": 1000000,
+        "packageSnapshot": {
+          "name": "Paket Wedding Ruby Luxury",
+          "price": 45000000,
+          "category": "wedding"
+        },
+        "expiresAt": "2026-11-12T02:00:00.000Z",
+        "createdAt": "2026-11-11T02:00:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 10,
+      "total": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+
+---
+
+### 7.3 Detail Pesanan Saya (Pelanggan)
+
+Mengambil detail lengkap satu pesanan milik pelanggan yang sedang login.
+
+- **Endpoint:** `GET /api/bookings/:id`
+- **Hak Akses:** Pelanggan Terautentikasi (khusus pemilik pesanan)
+- **Headers:** `Authorization: Bearer <customer_token>`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Detail pesanan berhasil diambil",
+  "data": {
+    "_id": "673012ab34cd56ef78909999",
+    "bookingNumber": "KL20270214-A8K2",
+    "category": "wedding",
+    "eventDate": "2027-02-14",
+    "eventName": "Akad & Resepsi Pernikahan",
+    "location": "Gedung Serbaguna Kalila, Jakarta",
+    "status": "menunggu_dp",
+    "paymentStatus": "belum_dp",
+    "dpAmount": 1000000,
+    "packageSnapshot": {
+      "name": "Paket Wedding Ruby Luxury",
+      "price": 45000000,
+      "category": "wedding"
+    },
+    "guestCount": 300,
+    "formData": {
+      "brideName": "Siti Nurhaliza",
+      "groomName": "Ahmad Dani",
+      "venueType": "indoor"
+    },
+    "statusHistory": [
+      {
+        "status": "menunggu_dp",
+        "at": "2026-11-11T02:00:00.000Z",
+        "note": "Pesanan dibuat oleh pelanggan"
+      }
+    ],
+    "expiresAt": "2026-11-12T02:00:00.000Z",
+    "createdAt": "2026-11-11T02:00:00.000Z"
+  }
+}
+```
+
+#### Respons Gagal
+- `404 Not Found`: Pesanan tidak ditemukan atau milik pelanggan lain (akses dicegah).
+
+---
+
+## 8. Modul Manajemen Pesanan Admin (`/api/admin/bookings`)
+
+Modul ini digunakan oleh admin untuk mengelola semua pesanan, membuat pesanan manual/offline, memperbarui status pesanan, dan mencatat pelunasan pembayaran.
+
+### 8.1 Daftar Pesanan (Admin)
+
+Mengambil seluruh daftar pesanan dengan filter fleksibel, pencarian aman, dan pengurutan.
+
+- **Endpoint:** `GET /api/admin/bookings`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query Parameters:**
+  - `category` (opsional): Filter kategori (`dekor`, `catering`, `wedding`).
+  - `status` (opsional): Filter status pesanan.
+  - `paymentStatus` (opsional): Filter status pembayaran.
+  - `source` (opsional): `website` atau `manual`.
+  - `dateFrom` & `dateTo` (opsional): Rentang tanggal acara `YYYY-MM-DD`.
+  - `q` (opsional): Pencarian teks bebas (nomor booking, nama acara, nama pelanggan, no telepon pelanggan; aman dari regex injection).
+  - `sort` (opsional, default `terbaru`): `terbaru`, `terlama`, `tanggal_acara_asc`, `tanggal_acara_desc`.
+  - `page` (opsional, default 1) & `limit` (opsional, default 10, maks 100).
+
+---
+
+### 8.2 Detail Lengkap Pesanan (Admin)
+
+Mengambil data pesanan secara utuh, termasuk data pelanggan, riwayat status, dan seluruh riwayat pembayaran (`Payment`).
+
+- **Endpoint:** `GET /api/admin/bookings/:id`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+---
+
+### 8.3 Pembaruan Status Pesanan (Admin)
+
+Memperbarui status operasional pesanan berdasarkan aturan transisi status yang ketat. Dilakukan secara atomik dengan proteksi konflik konkuren.
+
+- **Endpoint:** `PATCH /api/admin/bookings/:id/status`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`, `Content-Type: application/json`
+
+#### Aturan Transisi Status yang Diizinkan:
+- `menunggu_dp` -> `dibatalkan`
+- `menunggu_verifikasi` -> `dibatalkan`
+- `terkonfirmasi` -> `berlangsung` atau `dibatalkan`
+- `berlangsung` -> `selesai` atau `dibatalkan`
+- *Catatan:* Transisi `menunggu_dp`/`menunggu_verifikasi` -> `terkonfirmasi` HANYA dapat dilakukan melalui verifikasi pembayaran DP atau pembuatan pesanan manual dengan `dpPaid: true`.
+
+#### Request Body
+| Field | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `status` | String | Ya | Status tujuan yang valid |
+| `reason` | String | Kondisional | Wajib jika status tujuan adalah `dibatalkan` (minimal 5 karakter) |
+| `refundNote` | String | Tidak | Catatan pengembalian dana manual jika dibatalkan setelah DP dibayar |
+
+```json
+{
+  "status": "berlangsung"
+}
+```
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Status pesanan berhasil diubah menjadi berlangsung",
+  "data": { ... }
+}
+```
+
+#### Respons Gagal
+- `400 Bad Request`: Transisi status tidak diizinkan, atau pembatalan tanpa alasan (`reason`).
+- `409 Conflict`: Status pesanan telah diubah bersamaan oleh admin lain.
+
+---
+
+### 8.4 Pembuatan Pesanan Manual / Offline (Admin)
+
+Digunakan admin untuk mencatat pesanan yang datang via WhatsApp, telepon, atau langsung ke kantor.
+
+- **Endpoint:** `POST /api/admin/bookings/manual`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`, `Content-Type: application/json`
+
+#### Opsi Pembayaran DP (`dpPaid`):
+1. **`dpPaid: false`**: Pesanan disimpan dengan status `menunggu_dp` dan `paymentStatus: belum_dp`. Tidak mengunci slot tanggal. Pelanggan dapat membayar lewat transfer/QRIS dalam batas waktu.
+2. **`dpPaid: true`**: Dijalankan di dalam MongoDB Transaction dengan **SlotLock**. Mengunci slot tanggal secara atomik. Jika kuota penuh atau diblokir, transaksi di-rollback dan mengembalikan `409 Conflict`. Jika berhasil, status langsung `terkonfirmasi`, `paymentStatus: dp_dibayar`, dan record `Payment` approved langsung dibuat otomatis.
+
+#### Fitur Khusus Catering Custom:
+Admin dapat membuat pesanan catering tanpa `packageId` dengan menentukan nama dan estimasi harga manual pada `packageSnapshot`. Untuk kategori `dekor` dan `wedding`, wajib memilih paket aktif yang terdaftar.
+
+#### Request Body Contoh (dpPaid = true):
+```json
+{
+  "customer": {
+    "name": "Bapak Irwan Santoso",
+    "phone": "081234567890",
+    "email": "irwan@example.com"
+  },
+  "packageId": "672e12ab34cd56ef78905678",
+  "eventDate": "2027-03-20",
+  "eventName": "Resepsi Pernikahan Irwan & Maya",
+  "location": "Hotel Grand Kalila Ballroom",
+  "guestCount": 500,
+  "dpPaid": true,
+  "dpMethod": "transfer",
+  "dpNote": "DP ditransfer ke rekening BCA Kalila"
+}
+```
+
+---
+
+### 8.5 Pencatatan Pelunasan Pembayaran (Admin)
+
+Mencatat pelunasan sisa pembayaran setelah DP terbayar (biasanya dilakukan sebelum atau sesudah acara selesai).
+
+- **Endpoint:** `PATCH /api/admin/bookings/:id/settlement`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`, `Content-Type: application/json`
+
+#### Syarat Pencatatan:
+- Pesanan harus memiliki `paymentStatus: 'dp_dibayar'`.
+- Status operasional pesanan harus `terkonfirmasi`, `berlangsung`, atau `selesai`.
+- Idempoten: Pesanan yang sudah `lunas` akan ditolak dengan `409 Conflict`.
+
+#### Request Body
+| Field | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `amount` | Number | Ya | Nominal pelunasan (integer >= 0) |
+| `method` | String | Ya | `"transfer"` \| `"qris"` \| `"tunai"` \| `"lainnya"` |
+| `paidAt` | String / Date | Tidak | Tanggal & waktu pembayaran (default waktu saat ini) |
+| `note` | String | Tidak | Catatan pelunasan |
+
+```json
+{
+  "amount": 44000000,
+  "method": "transfer",
+  "note": "Pelunasan via transfer bank Mandiri"
+}
+```
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Pelunasan pesanan berhasil dicatat",
+  "data": {
+    "booking": {
+      "_id": "673012ab34cd56ef78909999",
+      "paymentStatus": "lunas"
+    },
+    "payment": {
+      "_id": "673012ab34cd56ef78908888",
+      "type": "pelunasan",
+      "amount": 44000000,
+      "method": "transfer",
+      "status": "approved",
+      "source": "manual"
+    }
+  }
+}
+```
+
+---
+
+### 8.6 Mengubah Total Harga Pesanan (Admin)
+
+Memperbarui total harga pesanan sebelum lunas (misal ada penambahan request dekorasi atau menu).
+
+- **Endpoint:** `PATCH /api/admin/bookings/:id/total`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`, `Content-Type: application/json`
+
+#### Request Body
+| Field | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `totalPrice` | Number | Ya | Total harga baru (integer >= dpAmount pesanan) |
+| `reason` | String | Tidak | Alasan perubahan harga |
+
+```json
+{
+  "totalPrice": 47000000,
+  "reason": "Penambahan dekor lorong karpet merah"
+}
+```
+
+---
+
+### 8.7 Mencatat Pengembalian Dana / Refund (Admin)
+
+Mencatat pengembalian dana manual untuk pesanan yang telah dibatalkan.
+
+- **Endpoint:** `POST /api/admin/bookings/:id/refund`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`, `Content-Type: application/json`
+
+#### Request Body
+| Field | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `amount` | Number | Ya | Nominal pengembalian (integer > 0, tidak boleh melebihi sisa dana masuk) |
+| `method` | String | Ya | `"transfer"` \| `"qris"` \| `"tunai"` \| `"lainnya"` |
+| `paidAt` | String / Date | Tidak | Waktu pengembalian dana |
+| `note` | String | Tidak | Catatan transfer pengembalian |
+
+```json
+{
+  "amount": 1000000,
+  "method": "transfer",
+  "note": "Refund transfer BCA customer"
+}
+```
+
+---
+
+## 9. Modul Pembayaran Pelanggan (`/api/bookings/:id/payment-*` & `/api/payments`)
+
+### 9.1 Informasi Pembayaran DP (Pelanggan)
+
+Mengambil rekening bank dan QRIS aktif untuk membayar DP pesanan yang sedang menunggu pembayaran.
+
+- **Endpoint:** `GET /api/bookings/:id/payment-info`
+- **Hak Akses:** Pelanggan Terautentikasi (khusus pemilik pesanan)
+- **Headers:** `Authorization: Bearer <customer_token>`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Informasi pembayaran berhasil diambil",
+  "data": {
+    "bookingNumber": "KL20270214-A8K2",
+    "dpAmount": 1000000,
+    "expiresAt": "2026-11-12T02:00:00.000Z",
+    "bankName": "BCA",
+    "accountNumber": "1234567890",
+    "accountHolder": "Kalila Wedding Organizer",
+    "qrisImage": "https://res.cloudinary.com/kalila/image/upload/settings/qris.jpg",
+    "remainingAttempts": 3,
+    "lastRejectionReason": null
+  }
+}
+```
+
+---
+
+### 9.2 Mengunggah Bukti Transfer DP (Pelanggan)
+
+Mengunggah foto bukti transfer ke penyimpanan privat Cloudinary (`type: authenticated`). URL Cloudinary tidak pernah diberikan ke publik.
+
+- **Endpoint:** `POST /api/bookings/:id/payment-proof`
+- **Hak Akses:** Pelanggan Terautentikasi (khusus pemilik pesanan)
+- **Headers:** `Authorization: Bearer <customer_token>`, `Content-Type: multipart/form-data`
+- **Body:** Form-data dengan key `proof` (satu file gambar JPG, PNG, atau WEBP, maks 5 MB).
+- **Rate Limit:** 30 permintaan per 15 menit per IP.
+
+#### Respons Berhasil (`201 Created`)
+```json
+{
+  "success": true,
+  "message": "Bukti transfer berhasil diunggah. Menunggu verifikasi admin.",
+  "data": {
+    "booking": {
+      "_id": "673012ab34cd56ef78909999",
+      "bookingNumber": "KL20270214-A8K2",
+      "status": "menunggu_verifikasi",
+      "paymentStatus": "menunggu_verifikasi",
+      "proofAttempts": 1
+    },
+    "payment": {
+      "_id": "673012ab34cd56ef78908888",
+      "type": "dp",
+      "amount": 1000000,
+      "status": "pending",
+      "attempt": 1,
+      "createdAt": "2026-11-11T03:00:00.000Z"
+    },
+    "whatsapp": {
+      "adminWhatsapp": "6281234567890",
+      "message": "Halo Kalila Organizer, saya telah mengunggah bukti pembayaran DP untuk pesanan KL20270214-A8K2 (Paket Wedding Ruby Luxury). Mohon untuk diverifikasi."
+    }
+  }
+}
+```
+
+---
+
+### 9.3 Mengambil / Streaming Bukti Transfer Privat
+
+Mengambil byte gambar bukti transfer secara aman. Server membaca gambar dari Cloudinary menggunakan URL bertanda tangan berumur pendek dan mem-pipe stream ke klien.
+
+- **Endpoint:** `GET /api/payments/:id/proof`
+- **Hak Akses:** Admin atau Pemilik Pesanan Terautentikasi
+- **Headers:** `Authorization: Bearer <token>`
+- **HTTP Response Headers:**
+  - `Content-Type: image/jpeg` (atau png/webp sesuai isi file)
+  - `Cache-Control: private, no-store`
+  - `X-Content-Type-Options: nosniff`
+
+---
+
+## 10. Modul Verifikasi & Kelola Pembayaran Admin (`/api/admin/payments`)
+
+### 10.1 Daftar Pembayaran Masuk (Admin)
+
+Melihat seluruh pembayaran DP dan pelunasan dengan kalkulasi ketersediaan slot tanggal real-time pada antrean pending.
+
+- **Endpoint:** `GET /api/admin/payments`
+- **Hak Akses:** Khusus Admin
+- **Query Parameters:**
+  - `status`: `"pending"` \| `"approved"` \| `"rejected"` \| `"void"`
+  - `type`: `"dp"` \| `"pelunasan"` \| `"pengembalian"`
+  - `source`: `"customer"` \| `"manual"`
+  - `dateFrom` & `dateTo`: Rentang tanggal `YYYY-MM-DD`
+  - `q`: Pencarian teks (nomor pesanan, nama/telepon pelanggan)
+  - `sort`: `"terlama"` \| `"terbaru"` (default `"terlama"` untuk status pending agar antrean diproses adil)
+  - `page` & `limit`
+
+---
+
+### 10.2 Detail Pembayaran Admin
+
+Melihat detail satu pembayaran, ringkasan pesanan, serta riwayat percobaan unggah bukti sebelumnya.
+
+- **Endpoint:** `GET /api/admin/payments/:id`
+- **Hak Akses:** Khusus Admin
+
+---
+
+### 10.3 Menyetujui Pembayaran DP (Admin Approve)
+
+Menyetujui pembayaran DP yang menunggu verifikasi. Sistem menjalankan penguncian slot tanggal atomik (`withSlotLock`). Bila kuota penuh atau tanggal diblokir, persetujuan ditolak (`409 Conflict`) dan status pembayaran tetap `pending`.
+
+- **Endpoint:** `PATCH /api/admin/payments/:id/approve`
+- **Hak Akses:** Khusus Admin
+
+---
+
+### 10.4 Menolak Bukti Pembayaran DP (Admin Reject)
+
+Menolak bukti transfer karena alasan tidak valid (misal gambar buram atau palsu). Sistem memperpanjang batas waktu pembayaran di Settings. Bila penolakan mencapai batas maksimal percobaan (`Setting.maxProofAttempts`), pesanan otomatis dibatalkan.
+
+- **Endpoint:** `PATCH /api/admin/payments/:id/reject`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Content-Type: application/json`
+
+#### Request Body
+```json
+{
+  "reason": "Foto bukti transfer buram dan nominal tidak terlihat"
+}
+```
+
+---
+
+### 10.5 Void Pembayaran Manual (Admin Void)
+
+Membatalkan (void) pencatatan pembayaran manual bertipe `pelunasan` atau `pengembalian` jika terjadi kesalahan administrasi.
+
+- **Endpoint:** `PATCH /api/admin/payments/:id/void`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Content-Type: application/json`
+
+#### Request Body
+```json
+{
+  "reason": "Koreksi salah input nominal pelunasan"
+}
+```
+
+---
+
+## 11. Modul Dashboard Pesanan Admin (`/api/admin/dashboard`)
+
+Modul ini menyediakan ringkasan data operasional pesanan dan grafik pesanan masuk untuk dashboard admin (PRD 5.1). Seluruh perhitungan waktu mengacu pada zona waktu **Asia/Jakarta (WIB, UTC+7)**.
+
+### 11.1 Overview Pesanan (Admin)
+
+Mengambil ringkasan metrik pesanan, antrean verifikasi pembayaran DP, 10 pesanan terbaru, acara terdekat, dan 5 antrean pembayaran terlama dalam satu panggilan efisien.
+
+- **Endpoint:** `GET /api/admin/dashboard/orders-overview`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query Parameters:**
+  - `recentLimit` (opsional, default 10, min 1, max 20): Jumlah pesanan terbaru yang diambil.
+  - `upcomingDays` (opsional, default 30, min 1, max 90): Jangkauan hari ke depan untuk acara terdekat.
+  - `upcomingLimit` (opsional, default 10, min 1, max 20): Jumlah acara terdekat yang diambil.
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Overview pesanan dashboard berhasil diambil",
+  "data": {
+    "summary": {
+      "newToday": 3,
+      "new7Days": 12,
+      "byStatus": {
+        "menunggu_dp": 2,
+        "menunggu_verifikasi": 3,
+        "terkonfirmasi": 8,
+        "berlangsung": 1,
+        "selesai": 15,
+        "dibatalkan": 4
+      },
+      "upcoming7Days": 4,
+      "pendingVerification": {
+        "count": 3,
+        "oldestWaitingSince": "2026-11-10T14:20:00.000Z"
+      }
+    },
+    "recentOrders": [
+      {
+        "id": "673012ab34cd56ef78909999",
+        "bookingNumber": "KL20270214-A8K2",
+        "createdAt": "2026-11-11T03:00:00.000Z",
+        "status": "menunggu_dp",
+        "paymentStatus": "belum_dp",
+        "category": "wedding",
+        "packageName": "Paket Wedding Ruby Luxury",
+        "customerName": "Budi Santoso",
+        "eventDate": "2027-02-14",
+        "eventName": "Akad & Resepsi Pernikahan",
+        "source": "website"
+      }
+    ],
+    "upcomingEvents": [
+      {
+        "id": "673012ab34cd56ef78909999",
+        "bookingNumber": "KL20270214-A8K2",
+        "category": "wedding",
+        "packageName": "Paket Wedding Ruby Luxury",
+        "customerName": "Budi Santoso",
+        "customerPhone": "081234567890",
+        "eventDate": "2027-02-14",
+        "eventName": "Akad & Resepsi Pernikahan",
+        "location": "Gedung Serbaguna Kalila, Jakarta",
+        "paymentStatus": "dp_dibayar",
+        "daysUntil": 3
+      }
+    ],
+    "pendingPayments": [
+      {
+        "paymentId": "673012ab34cd56ef78908888",
+        "bookingNumber": "KL20270214-A8K2",
+        "customerName": "Budi Santoso",
+        "category": "wedding",
+        "eventDate": "2027-02-14",
+        "amount": 1000000,
+        "createdAt": "2026-11-10T14:20:00.000Z",
+        "attempt": 1
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 11.2 Grafik Pesanan Masuk (Admin)
+
+Menghasilkan data time-series pesanan masuk per kategori (`dekor`, `catering`, `wedding`) yang dihitung berdasarkan waktu pembuatan (`createdAt`, WIB).
+
+- **Endpoint:** `GET /api/admin/dashboard/orders-chart`
+- **Hak Akses:** Khusus Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query Parameters:**
+  - `from` (opsional, format `YYYY-MM-DD`): Tanggal awal (default 30 hari yang lalu).
+  - `to` (opsional, format `YYYY-MM-DD`): Tanggal akhir (default hari ini WIB, tidak boleh di masa depan).
+  - `groupBy` (opsional, `"day"` \| `"week"` \| `"month"`, default `"day"`): Pengelompokan data (`week` mengelompokkan ke hari Senin awal minggu).
+  - `includeCancelled` (opsional, boolean, default `true`): Apakah pesanan berstatus dibatalkan disertakan dalam grafik.
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Data grafik pesanan berhasil diambil",
+  "data": {
+    "from": "2026-10-12",
+    "to": "2026-11-11",
+    "groupBy": "day",
+    "labels": [
+      "2026-10-12",
+      "2026-10-13",
+      "..."
+    ],
+    "series": [
+      {
+        "category": "dekor",
+        "data": [1, 0, 2]
+      },
+      {
+        "category": "catering",
+        "data": [0, 1, 1]
+      },
+      {
+        "category": "wedding",
+        "data": [2, 1, 0]
+      }
+    ],
+    "totals": {
+      "dekor": 3,
+      "catering": 2,
+      "wedding": 3,
+      "all": 8
+    }
+  }
+}
+```
+
+---
+
+## 12. Modul Portofolio (`/api/portfolios` & `/api/admin/portfolios`)
+
+Modul untuk mengelola portofolio hasil karya Kalila (kategori dekor, catering, dan wedding).
+
+### 12.1 Daftar Portofolio Publik
+Mengambil daftar portofolio yang telah dipublikasikan (`isPublished = true`).
+- **Endpoint:** `GET /api/portfolios`
+- **Hak Akses:** Publik
+- **Query Parameters:**
+  - `category` (opsional): `"dekor"` | `"catering"` | `"wedding"`
+  - `featured` (opsional): `"true"` | `"false"`
+  - `q` (opsional): Pencarian teks pada judul atau deskripsi (aman dari regex injection)
+  - `page` (opsional, default `1`): Nomor halaman
+  - `limit` (opsional, default `12`, maks `50`): Jumlah data per halaman
+  - `sort` (opsional, default `"terbaru"`): Whitelist `"terbaru"` | `"terlama"`
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Daftar portofolio berhasil diambil",
+  "data": [
+    {
+      "id": "672e12ab34cd56ef78901234",
+      "slug": "pernikahan-megah-rustic-grand",
+      "title": "Pernikahan Megah Rustic Grand",
+      "category": "dekor",
+      "description": "Dekorasi rustic megah di ballroom...",
+      "eventDate": "2025-10-15",
+      "location": "Grand Ballroom Hotel Mulia",
+      "cover": "https://res.cloudinary.com/demo/image/upload/v1/kalila/portfolios/img1.jpg",
+      "imageCount": 3,
+      "isFeatured": true,
+      "createdAt": "2026-11-11T08:00:00.000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 12,
+    "total": 1,
+    "totalPages": 1
+  }
+}
+```
+*Catatan: Respons publik tidak pernah memuat `publicId` Cloudinary.*
+
+---
+
+### 12.2 Detail Portofolio Publik
+Mengambil detail portofolio beserta seluruh galeri gambarnya berdasarkan `slug`.
+- **Endpoint:** `GET /api/portfolios/:slug`
+- **Hak Akses:** Publik
+
+#### Respons Berhasil (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Detail portofolio berhasil diambil",
+  "data": {
+    "id": "672e12ab34cd56ef78901234",
+    "slug": "pernikahan-megah-rustic-grand",
+    "title": "Pernikahan Megah Rustic Grand",
+    "category": "dekor",
+    "description": "Dekorasi rustic megah di ballroom...",
+    "eventDate": "2025-10-15",
+    "location": "Grand Ballroom Hotel Mulia",
+    "isFeatured": true,
+    "images": [
+      {
+        "_id": "672e12ab34cd56ef78901235",
+        "url": "https://res.cloudinary.com/demo/image/upload/v1/kalila/portfolios/img1.jpg"
+      }
+    ],
+    "createdAt": "2026-11-11T08:00:00.000Z",
+    "updatedAt": "2026-11-11T08:00:00.000Z"
+  }
+}
+```
+
+---
+
+### 12.3 Daftar Portofolio Admin
+Mengambil seluruh portofolio (status draft/published).
+- **Endpoint:** `GET /api/admin/portfolios`
+- **Hak Akses:** Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query Parameters:** `category`, `isPublished` (`true`/`false`), `isFeatured` (`true`/`false`), `q`, `page` (default 1), `limit` (default 10, maks 100), `sort` (`"terbaru"` | `"terlama"` | `"title_asc"` | `"title_desc"`).
+
+---
+
+### 12.4 Detail Portofolio Admin
+- **Endpoint:** `GET /api/admin/portfolios/:id`
+- **Hak Akses:** Admin
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+---
+
+### 12.5 Buat Portofolio Baru (Admin)
+Membuat metadata portofolio baru. Gambar diunggah terpisah via endpoint upload images.
+- **Endpoint:** `POST /api/admin/portfolios`
+- **Hak Akses:** Admin
+- **Headers:** `Authorization: Bearer <admin_token>`, `Content-Type: application/json`
+
+#### Request Body
+| Field | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `category` | String | Ya | `"dekor"` \| `"catering"` \| `"wedding"` |
+| `title` | String | Ya | Judul (3 - 120 karakter) |
+| `description` | String | Tidak | Deskripsi (maks 2000 karakter) |
+| `eventDate` | String | Tidak | Tanggal acara (`YYYY-MM-DD` kalender valid) |
+| `location` | String | Tidak | Lokasi acara (maks 200 karakter) |
+| `isPublished` | Boolean | Tidak | Default `true` |
+| `isFeatured` | Boolean | Tidak | Default `false` |
+
+---
+
+### 12.6 Ubah Portofolio (Admin)
+- **Endpoint:** `PUT /api/admin/portfolios/:id`
+- **Hak Akses:** Admin
+- **Keterangan:** Jika `title` diubah, slug akan otomatis dibuat ulang. Kategori bebas diubah kapan saja.
+
+---
+
+### 12.7 Ubah Status Publikasi / Featured (Admin)
+- **Endpoint:** `PATCH /api/admin/portfolios/:id/status`
+- **Hak Akses:** Admin
+- **Request Body:** `{ "isPublished"?: boolean, "isFeatured"?: boolean }` (minimal salah satu harus ada).
+
+---
+
+### 12.8 Hapus Portofolio (Admin)
+Menghapus dokumen portofolio dan secara otomatis menghapus seluruh gambar terkait di Cloudinary.
+- **Endpoint:** `DELETE /api/admin/portfolios/:id`
+- **Hak Akses:** Admin
+
+---
+
+### 12.9 Unggah Gambar Portofolio (Admin)
+Mengunggah 1 sampai 5 gambar sekaligus ke folder Cloudinary `kalila/portfolios`. Total gambar per portofolio maksimal 12.
+- **Endpoint:** `POST /api/admin/portfolios/:id/images`
+- **Hak Akses:** Admin
+- **Headers:** `Content-Type: multipart/form-data`
+- **Body:** Field `images` (1 - 5 file gambar format JPG, PNG, atau WEBP, maks 5 MB per gambar, divalidasi via magic bytes).
+- **Aturan:** Jika penyimpanan database gagal, seluruh aset yang baru diunggah di Cloudinary otomatis di-rollback (dihapus).
+
+---
+
+### 12.10 Hapus Satu Gambar Portofolio (Admin)
+Menghapus satu gambar dari portofolio dan menghapus asetnya dari Cloudinary.
+- **Endpoint:** `DELETE /api/admin/portfolios/:id/images/:imageId`
+- **Hak Akses:** Admin
+
+---
+
+### 12.11 Jadikan Sampul Portofolio (Admin)
+Memindahkan gambar terpilih menjadi urutan pertama (indeks 0).
+- **Endpoint:** `PATCH /api/admin/portfolios/:id/images/:imageId/cover`
+- **Hak Akses:** Admin
+
+---
+
+## 13. Modul Kelola User Admin (`/api/admin/users`)
+
+Modul untuk mengelola akun admin/staf Kalila. Semua admin memiliki hak akses yang setara. Data pelanggan tidak dikelola di sini.
+
+> **Kebijakan Password Admin:**
+> - Panjang minimal 8 karakter dan maksimal **72 byte UTF-8** (`Buffer.byteLength(password, 'utf8') <= 72`, batas teknis algoritma bcrypt).
+> - Minimal 1 huruf (`[a-zA-Z]`) dan minimal 1 angka (`[0-9]`).
+> - Tidak boleh sama persis dengan alamat email.
+> 
+> **Pembatas Konfirmasi Password Admin (In-Memory):**
+> Pada endpoint yang memeriksa password admin yang sedang login (`PATCH /api/admin/users/me/password`, `POST /api/admin/users`, `POST /api/admin/users/:id/reset-password`), sistem membatasi percobaan konfirmasi password yang gagal dengan kunci ID admin login. Batas diambil dari `AUTH_CONFIRM_MAX` (default 5 kali) per jendela 15 menit. Melebihi batas menghasilkan `429 Too Many Requests`. Percobaan yang berhasil tidak dihitung. Penyimpanan berbasis in-memory server.
+
+### 13.1 Daftar Akun Admin
+Mengambil seluruh akun role `admin`. Akun customer tidak pernah dimuat di endpoint ini.
+- **Endpoint:** `GET /api/admin/users`
+- **Hak Akses:** Admin
+- **Query Parameters:** `isActive` (`true`/`false`), `q` (nama/email), `page` (default 1), `limit` (default 10, maks 100), `sort` (`"terbaru"` | `"terlama"` | `"nama"`).
+
+---
+
+### 13.2 Detail Akun Admin
+- **Endpoint:** `GET /api/admin/users/:id`
+- **Hak Akses:** Admin
+- **Keterangan:** Jika ID adalah milik customer atau tidak ditemukan, menghasilkan `404 Not Found`.
+
+---
+
+### 13.3 Tambah Admin Baru
+- **Endpoint:** `POST /api/admin/users`
+- **Hak Akses:** Admin
+- **Headers:** `Content-Type: application/json`
+
+#### Request Body
+| Field | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `name` | String | Ya | Nama lengkap admin (2 - 100 karakter) |
+| `email` | String | Ya | Email unik (case-insensitive, duplikat `409`) |
+| `phone` | String | Tidak | Nomor telepon (dinormalisasi format 628...) |
+| `password` | String | Ya | Password memenuhi kebijakan |
+| `confirmPassword` | String | Ya | Password admin yang sedang login (salah `403`) |
+
+*Catatan: Field `role` tidak diizinkan dikirim dari klien dan ditolak `400 Bad Request`.*
+
+---
+
+### 13.4 Ubah Data Admin
+Mengubah profil `name`, `email`, atau `phone` admin.
+- **Endpoint:** `PUT /api/admin/users/:id`
+- **Hak Akses:** Admin
+- **Keterangan:** Field `role`, `password`, dan `isActive` dilarang dikirim melalui endpoint ini (`400 Bad Request`).
+
+---
+
+### 13.5 Ubah Status Aktif/Nonaktif Admin
+- **Endpoint:** `PATCH /api/admin/users/:id/status`
+- **Hak Akses:** Admin
+- **Request Body:** `{ "isActive": boolean }`
+- **Aturan Bisnis & Keamanan:**
+  - Admin dilarang menonaktifkan akun miliknya sendiri (`400 Bad Request`).
+  - Sistem wajib memiliki minimal 1 admin aktif; menonaktifkan admin aktif terakhir ditolak (`409 Conflict`).
+  - Dilindungi serialisasi transaksi MongoDB (`AdminLock`) sehingga aman dari race condition ketika dua admin saling menonaktifkan bersamaan.
+  - Akun yang dinonaktifkan ditolak login (`403 Forbidden`) dan seluruh token yang beredar langsung tidak dapat digunakan (`401 Unauthorized`).
+
+---
+
+### 13.6 Ganti Password Akun Sendiri
+- **Endpoint:** `PATCH /api/admin/users/me/password`
+- **Hak Akses:** Admin
+- **Request Body:**
+  ```json
+  {
+    "currentPassword": "PasswordLama123!",
+    "newPassword": "PasswordBaru123!"
+  }
+  ```
+- **Keterangan:** Seluruh token lama langsung tidak berlaku setelah password berhasil diubah (`401 Unauthorized`).
+
+---
+
+### 13.7 Reset Password Admin Lain
+- **Endpoint:** `POST /api/admin/users/:id/reset-password`
+- **Hak Akses:** Admin
+- **Request Body:**
+  ```json
+  {
+    "newPassword": "PasswordBaruAdminTarget123!",
+    "confirmPassword": "PasswordAdminYangSedangLogin!"
+  }
+  ```
+- **Keterangan:** Tidak dapat digunakan untuk mereset akun sendiri (gunakan `/me/password`) atau akun customer (`404`). Seluruh token lama admin target otomatis dibatalkan.
+
+---
+
+## 14. Modul Notifikasi Email & Outbox (`/api/admin/emails`)
+
+Mengelola antrean email transaksional keluar (*Transactional Email Outbox*) dengan proteksi idempotensi, retry backoff exponential, klaim atomik, serta pembersihan berkas otomatis (TTL). Seluruh endpoint pada modul ini membutuhkan token JWT dengan role `admin`.
+
+### 14.1 Daftar Antrean Email (Outbox)
+- **Endpoint:** `GET /api/admin/emails`
+- **Hak Akses:** Admin
+- **Query Parameters:**
+  - `status`: `pending` | `sending` | `sent` | `failed` | `skipped` (opsional)
+  - `type`: `booking_created_admin` | `booking_created_owner` | `payment_proof_admin` | `booking_confirmed_customer` (opsional)
+  - `q`: Pencarian teks pada alamat penerima, subject, atau nomor pesanan (opsional, dilindungi sanitasi regex)
+  - `page`: Nomor halaman (default: `1`)
+  - `limit`: Jumlah per halaman (default: `10`, maksimal: `100`)
+  - `sort`: `terbaru` | `terlama` (default: `terbaru`)
+- **Keamanan:** Konten HTML tidak disertakan pada respons daftar; alamat email disamarkan sebagian (*masked*).
+- **Respons Berhasil (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Daftar antrean email berhasil diambil",
+    "data": {
+      "items": [
+        {
+          "_id": "672f00000000000000000001",
+          "type": "booking_created_admin",
+          "to": "a***1@kalila.com",
+          "originalTo": null,
+          "subject": "Pesanan baru KLA-20261112-001 - Dekor - 12 Nov 2026",
+          "status": "sent",
+          "attempts": 1,
+          "lastError": null,
+          "provider": "resend",
+          "sentAt": "2026-11-12T08:00:05.000Z",
+          "purgeAt": "2026-12-12T08:00:05.000Z",
+          "createdAt": "2026-11-12T08:00:00.000Z",
+          "booking": {
+            "_id": "672f000000000000000000aa",
+            "bookingNumber": "KLA-20261112-001"
+          }
+        }
+      ],
+      "pagination": {
+        "page": 1,
+        "limit": 10,
+        "total": 1,
+        "totalPages": 1
+      }
+    }
+  }
+  ```
+
+---
+
+### 14.2 Detail Email Outbox
+- **Endpoint:** `GET /api/admin/emails/:id`
+- **Hak Akses:** Admin
+- **Keamanan:** Mengembalikan metadata lengkap dan versi teks polos (`text`); konten HTML dihilangkan dari payload respons demi keamanan.
+- **Respons Berhasil (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Detail email outbox berhasil diambil",
+    "data": {
+      "_id": "672f00000000000000000001",
+      "type": "booking_created_admin",
+      "dedupeKey": "booking-created:672f000000000000000000aa:admin1@kalila.com",
+      "to": "a***1@kalila.com",
+      "originalTo": null,
+      "subject": "Pesanan baru KLA-20261112-001 - Dekor - 12 Nov 2026",
+      "text": "PESANAN BARU MASUK DARI WEBSITE...",
+      "replyTo": "kontak@kalila.com",
+      "status": "sent",
+      "attempts": 1,
+      "nextAttemptAt": "2026-11-12T08:00:00.000Z",
+      "lastError": null,
+      "provider": "resend",
+      "providerMessageId": "msg_abc123",
+      "sentAt": "2026-11-12T08:00:05.000Z",
+      "purgeAt": "2026-12-12T08:00:05.000Z",
+      "createdAt": "2026-11-12T08:00:00.000Z",
+      "updatedAt": "2026-11-12T08:00:05.000Z",
+      "booking": { ... }
+    }
+  }
+  ```
+
+---
+
+### 14.3 Coba Ulang Email Gagal (Retry)
+- **Endpoint:** `POST /api/admin/emails/:id/retry`
+- **Hak Akses:** Admin
+- **Aturan:** Hanya item berstatus `failed` yang diizinkan untuk di-retry. Status diubah kembali menjadi `pending`, hitungan `attempts` di-reset ke 0, dan `nextAttemptAt` diatur ke waktu sekarang. Jika email belum berstatus `failed`, endpoint mengembalikan `409 Conflict`.
+- **Respons Berhasil (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Email berhasil dijadwalkan ulang untuk dikirim",
+    "data": {
+      "_id": "672f00000000000000000001",
+      "status": "pending",
+      "attempts": 0,
+      "nextAttemptAt": "2026-11-12T09:30:00.000Z"
+    }
+  }
+  ```
+
+---
+
+### 14.4 Status Konfigurasi & Kuota Email
+- **Endpoint:** `GET /api/admin/emails/status`
+- **Hak Akses:** Admin
+- **Keamanan:** Tidak pernah membocorkan rahasia (`RESEND_API_KEY`) atau alamat email target redirect.
+- **Respons Berhasil (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Status konfigurasi email berhasil diambil",
+    "data": {
+      "provider": "resend",
+      "mode": "sandbox",
+      "ready": true,
+      "reason": null,
+      "emailFromDomain": "resend.dev",
+      "isRedirectActive": true,
+      "sentLast24Hours": 14,
+      "dailyLimit": 90,
+      "pendingCount": 2,
+      "failedCount": 0
+    }
+  }
+  ```
+
+---
+
+### 14.5 Kirim Email Pengujian
+- **Endpoint:** `POST /api/admin/emails/test`
+- **Hak Akses:** Admin (Dilindungi rate limiter: maksimal 5 kali pengiriman per jam per admin).
+- **Aturan:**
+  - Email pengujian **hanya** dikirim ke alamat email akun admin yang sedang login (`req.user.email`). Body request tidak menerima input alamat email untuk mencegah penyalahgunaan relay.
+  - Mematuhi aturan `EMAIL_REDIRECT_TO` bila aktif.
+  - Pada mode sandbox (domain `resend.dev`), respons mengingatkan bahwa pengujian hanya akan sampai ke email akun pemilik Resend.
+- **Respons Berhasil (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Email pengujian berhasil dikirim.",
+    "data": {
+      "provider": "resend",
+      "to": "a***n@kalila.com",
+      "messageId": "msg_test_12345",
+      "mode": "production"
+    }
+  }
+  ```
+
+---
+
+## 15. Variabel Lingkungan & Panduan Setup Resend
+
+### 15.1 Variabel Lingkungan Email
+Konfigurasikan variabel berikut pada file `.env` di backend:
+
+| Variabel | Tipe / Nilai | Keterangan |
+|---|---|---|
+| `EMAIL_PROVIDER` | `resend` \| `log` \| `memory` | Provider pengiriman. Default: `log`. Pada `NODE_ENV=production`, hanya `resend` yang diizinkan. |
+| `RESEND_API_KEY` | String (contoh: `re_123...`) | API Key dari dashboard Resend. Jangan pernah dicetak di log. |
+| `EMAIL_FROM` | String | Format nama dan email pengirim, misal: `Kalila Organizer <noreply@domain.com>` |
+| `EMAIL_REPLY_TO` | String (opsional) | Alamat balasan default bila pelanggan menekan reply. |
+| `EMAIL_REDIRECT_TO` | String (opsional) | Alamat pengalihan semua email keluar (hanya untuk mode uji/pengembangan). Bila diisi, subject otomatis diawali `[UJI]`. |
+| `EMAIL_DAILY_LIMIT` | Number (default: `90`) | Batas maksimal email terkirim dalam 24 jam terakhir (paket gratis Resend: 100/hari). |
+| `EMAIL_BATCH_PER_TICK`| Number (default: `5`) | Jumlah maksimal antrean pending yang diproses per menit oleh job cron. |
+| `APP_PUBLIC_URL` | URL | URL dasar web publik pelanggan (contoh: `https://kalilaorganizer.com`). |
+| `APP_ADMIN_URL` | URL | URL dasar web admin (contoh: `https://kalilaorganizer.com/admin`). |
+
+> [!NOTE]
+> **Catatan Penyelarasan Frontend:**
+> Pola URL tautan email yang dikonfigurasi pada `src/config/emailLinks.js` (`/orders/:id`, `/payments`) adalah asumsi awal dan wajib diselaraskan dengan struktur rute aplikasi Frontend Vue saat integrasi tampilan email dilakukan.
+
+---
+
+### 15.2 Panduan Dua Fase Setup Resend
+
+#### Fase A: Sebelum Domain Kalila Ada (Pengembangan & Uji Coba)
+1. **Opsi 1 (Disarankan untuk dev lokal):** Atur `EMAIL_PROVIDER=log`. Semua notifikasi email outbox diproses secara instan dan dicatat ringkasannya ke konsol server tanpa memakan kuota Resend.
+2. **Opsi 2 (Uji coba kirim nyata Resend):**
+   - Buat akun gratis di [resend.com](https://resend.com) dan buat API Key.
+   - Atur `.env`:
+     ```env
+     EMAIL_PROVIDER=resend
+     RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxx
+     EMAIL_FROM=Kalila Organizer <onboarding@resend.dev>
+     EMAIL_REDIRECT_TO=email_akun_resend_anda@gmail.com
+     ```
+   - *Penting:* Pada mode sandbox (`resend.dev`), Resend **hanya** mengizinkan pengiriman ke alamat email akun terdaftar Anda. Pengalihan via `EMAIL_REDIRECT_TO` menjamin tidak ada error 403 saat simulasi pengiriman ke pelanggan/admin lain.
+
+#### Fase B: Setelah Domain Kalila Ada (Produksi)
+1. Buka dashboard Resend > **Domains** > **Add Domain** (masukkan domain Kalila, misal `kalilaorganizer.com`).
+2. Masuk ke DNS Manager domain Anda (Cloudflare, cPanel, dll.) dan salin catatan DNS yang diberikan oleh Resend:
+   - Catatan **SPF** (TXT)
+   - Catatan **DKIM** (CNAME / TXT)
+3. Tekan **Verify** di dashboard Resend hingga status domain berubah menjadi **Verified**.
+4. Perbarui variabel `.env` di server produksi:
+   ```env
+   NODE_ENV=production
+   EMAIL_PROVIDER=resend
+   RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxx
+   EMAIL_FROM=Kalila Wedding & Organizer <noreply@kalilaorganizer.com>
+   EMAIL_REPLY_TO=kontak@kalilaorganizer.com
+   EMAIL_REDIRECT_TO=
+   ```
+   *(Pastikan `EMAIL_REDIRECT_TO` dihapus/dikosongkan agar email benar-benar terkirim ke masing-masing pelanggan, admin, dan owner).*
+5. Buka dashboard admin dan uji coba koneksi melalui tombol uji di menu pengaturan email atau `POST /api/admin/emails/test`.
+
+
+
+
+
+
+
+---
+
+## 16. Modul Dashboard Keuangan Admin (`/api/admin/finance`)
+
+Seluruh endpoint pada modul ini bersifat **hanya-baca (read-only)** dan membutuhkan token admin (`Authorization: Bearer <token>` dengan role `admin`). Token tidak valid/tidak ada menghasilkan `401`, sedangkan token `customer` menghasilkan `403`. Parameter query divalidasi ketat dengan Zod `.strict()`; parameter yang tidak dikenal atau tidak valid mengembalikan `400`.
+
+### 16.1 Definisi Keuangan (Aturan Baku)
+- **Dasar kas:** Uang dihitung pada tanggal diterima atau dikembalikan, bukan pada tanggal acara (`eventDate`).
+- **Status pembayaran:** Hanya dokumen `Payment` berstatus `approved` yang masuk perhitungan arus kas. Status `pending`, `rejected`, dan `void` tidak dihitung (kecuali pada metrik informasi `pendingVerification` atau penelusuran dengan filter eksplisit pada `/transactions`).
+- **Tanggal transaksi:** Menggunakan `paidAt`; apabila `paidAt` kosong (`null`), menggunakan `verifiedAt`, lalu `createdAt`. Seluruh pengelompokan tanggal menggunakan zona waktu **WIB (`Asia/Jakarta`)**.
+- **Pemasukan kotor (`gross`):** Jumlah `Payment` berstatus `approved` bertipe `dp` dan `pelunasan`.
+- **Pengembalian (`refunds`):** Jumlah `Payment` berstatus `approved` bertipe `pengembalian`.
+- **Pemasukan bersih (`net`):** `gross - refunds`. DP yang tidak dikembalikan (hangus) tetap dihitung sebagai pemasukan.
+- **Kategori transaksi:** Mengikuti `category` pada dokumen `Booking` terkait (`dekor`, `catering`, atau `wedding`).
+- **Piutang (sisa tagihan):** Dihitung untuk `Booking` berstatus `terkonfirmasi`, `berlangsung`, atau `selesai` dengan `paymentStatus` bukan `lunas`:
+  - `total = totalPrice ?? packageSnapshot.price`
+  - `sisa = max(total - DP disetujui - pelunasan disetujui, 0)`
+  - Pesanan dengan `total === null` (belum ditetapkan) tidak masuk ke daftar `/outstanding`, melainkan dihitung terpisah pada `summary.outstanding.totalBelumDitetapkan`.
+- **Pembulatan:** Seluruh nominal berupa bilangan bulat rupiah. Persentase perubahan dibulatkan 1 angka desimal, dan bernilai `null` bila periode pembanding bernilai `0`.
+
+### 16.2 Konvensi Rentang Tanggal
+- Parameter `from` dan `to` berformat `"YYYY-MM-DD"` (WIB, inklusif dari `00:00:00.000 WIB` hingga `23:59:59.999 WIB`).
+- Default: awal bulan berjalan hingga hari ini (WIB). Bila hanya `to` yang diberikan untuk bulan lalu, `from` otomatis memakai tanggal 1 bulan dari `to`.
+- Validasi ketat: `from <= to`, tanggal kalender harus valid (mis. `2026-02-30` ditolak `400`), `to <= hari ini (WIB)`, dan rentang maksimal **366 hari**.
+
+---
+
+### 16.3 `GET /api/admin/finance/summary`
+Mengambil ringkasan arus kas periode berjalan vs periode pembanding, kategori, 5 paket teratas, piutang saat ini, dan antrean verifikasi DP.
+
+- **Query:** `from?`, `to?`
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Ringkasan keuangan berhasil diambil",
+  "data": {
+    "period": { "from": "2026-11-01", "to": "2026-11-12", "days": 12 },
+    "gross": 25000000,
+    "refunds": 1000000,
+    "net": 24000000,
+    "byType": { "dp": 5000000, "pelunasan": 20000000, "pengembalian": 1000000 },
+    "byCategory": {
+      "dekor": { "gross": 10000000, "refunds": 1000000, "net": 9000000 },
+      "catering": { "gross": 5000000, "refunds": 0, "net": 5000000 },
+      "wedding": { "gross": 10000000, "refunds": 0, "net": 10000000 }
+    },
+    "counts": { "payments": 8, "bookings": 5 },
+    "previous": {
+      "from": "2026-10-20",
+      "to": "2026-10-31",
+      "gross": 20000000,
+      "refunds": 0,
+      "net": 20000000
+    },
+    "change": { "net": 20.0, "gross": 25.0 },
+    "topPackages": [
+      { "packageName": "Wedding Gold", "gross": 10000000, "refunds": 0, "net": 10000000, "paymentsCount": 2 }
+    ],
+    "outstanding": {
+      "count": 4,
+      "amount": 18500000,
+      "overdueCount": 1,
+      "totalBelumDitetapkan": 1
+    },
+    "pendingVerification": { "count": 2, "amount": 2000000 }
+  }
+}
+```
+
+---
+
+### 16.4 `GET /api/admin/finance/chart`
+Menyediakan deret waktu arus kas per hari (`day`), per minggu dimulai Senin (`week`), atau per bulan (`month`). Bucket pertama/terakhir yang terpotong hanya menjumlahkan transaksi di dalam `[from, to]`.
+
+- **Query:** `from?`, `to?`, `groupBy` (`day` | `week` | `month`, default `day`), `breakdown` (`category` | `type`, default `category`)
+  - `breakdown=category`: berisi pemasukan **bersih** per bucket untuk `dekor`, `catering`, `wedding` (dapat bernilai negatif bila pengembalian lebih besar dari pemasukan).
+  - `breakdown=type`: berisi nilai **positif** per bucket untuk `dp`, `pelunasan`, `pengembalian`.
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Data grafik keuangan berhasil diambil",
+  "data": {
+    "from": "2026-11-01",
+    "to": "2026-11-03",
+    "groupBy": "day",
+    "breakdown": "category",
+    "labels": ["2026-11-01", "2026-11-02", "2026-11-03"],
+    "series": [
+      { "key": "dekor", "data": [1000000, 0, 5000000] },
+      { "key": "catering", "data": [0, 2000000, 0] },
+      { "key": "wedding", "data": [0, 0, -500000] }
+    ],
+    "totals": {
+      "dekor": 6000000,
+      "catering": 2000000,
+      "wedding": -500000,
+      "net": 7500000
+    }
+  }
+}
+```
+
+---
+
+### 16.5 `GET /api/admin/finance/transactions`
+Menampilkan daftar transaksi pembayaran berpaginasi beserta `totals` untuk **seluruh hasil filter** (bukan hanya halaman aktif). Tidak pernah mengembalikan `publicId`, URL bukti transfer, atau informasi rekening.
+
+- **Query:**
+  - `from?`, `to?`
+  - `type?` (`dp` | `pelunasan` | `pengembalian`)
+  - `category?` (`dekor` | `catering` | `wedding`)
+  - `method?` (`transfer` | `qris` | `tunai` | `lainnya`)
+  - `source?` (`customer` | `manual`)
+  - `status` (`approved` | `void` | `pending` | `rejected`, default `approved`)
+  - `q?` (pencarian teks pada nomor pesanan, nama pelanggan, atau nama paket; karakter regex di-escape aman)
+  - `page` (default `1`), `limit` (default `20`, maks `100`)
+  - `sort` (`terbaru` default | `terlama` | `nominal_besar` | `nominal_kecil`)
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Daftar transaksi keuangan berhasil diambil",
+  "data": {
+    "items": [
+      {
+        "id": "673000000000000000000001",
+        "bookingNumber": "KL-202611-ABCD",
+        "customerName": "Siti Aminah",
+        "category": "wedding",
+        "packageName": "Wedding Gold",
+        "type": "dp",
+        "direction": "masuk",
+        "amount": 1000000,
+        "method": "transfer",
+        "paidAt": "2026-11-12T03:00:00.000Z",
+        "source": "customer",
+        "status": "approved",
+        "verifiedByName": "Admin Kalila",
+        "note": ""
+      }
+    ],
+    "pagination": { "page": 1, "limit": 20, "total": 1, "totalPages": 1 },
+    "totals": { "masuk": 1000000, "keluar": 0, "net": 1000000, "count": 1 },
+    "filters": {
+      "from": "2026-11-01",
+      "to": "2026-11-12",
+      "type": null,
+      "category": null,
+      "method": null,
+      "source": null,
+      "status": "approved",
+      "q": "",
+      "sort": "terbaru"
+    }
+  }
+}
+```
+
+---
+
+### 16.6 `GET /api/admin/finance/recap`
+Rekapitulasi pendapatan bulanan (12 baris Januari–Desember) atau tahunan (rentang hingga 10 tahun).
+
+- **Query:**
+  - `groupBy` (`month` | `year`, default `month`)
+  - Untuk `month`: `year` (`2000 .. tahun berjalan WIB`, default tahun ini)
+  - Untuk `year`: `fromYear`, `toYear` (default 3 tahun terakhir; rentang maks 10 tahun; `fromYear <= toYear`)
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Rekapitulasi keuangan berhasil diambil",
+  "data": {
+    "groupBy": "month",
+    "year": 2026,
+    "rows": [
+      {
+        "label": "Januari",
+        "month": 1,
+        "period": "2026-01",
+        "gross": 5000000,
+        "refunds": 0,
+        "net": 5000000,
+        "byCategory": { "dekor": 5000000, "catering": 0, "wedding": 0 },
+        "counts": { "payments": 2 }
+      }
+    ],
+    "totals": {
+      "gross": 5000000,
+      "refunds": 0,
+      "net": 5000000,
+      "byCategory": { "dekor": 5000000, "catering": 0, "wedding": 0 },
+      "counts": { "payments": 2 }
+    }
+  }
+}
+```
+
+---
+
+### 16.7 `GET /api/admin/finance/outstanding`
+Daftar pesanan aktif/selesai (`terkonfirmasi`, `berlangsung`, `selesai`) yang memiliki sisa tagihan `> 0`. Pesanan tanpa total harga (`total === null`) tidak muncul di daftar ini tetapi tetap dihitung pada `summary.outstanding.totalBelumDitetapkan`.
+
+- **Query:** `page` (default `1`), `limit` (default `20`, maks `100`), `overdueOnly` (boolean, default `false`), `sort` (`acara_terdekat` default | `sisa_terbesar`)
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Daftar pesanan belum lunas berhasil diambil",
+  "data": {
+    "items": [
+      {
+        "id": "673000000000000000000010",
+        "bookingNumber": "KL-202611-XY12",
+        "customerName": "Budi Santoso",
+        "customerPhone": "081234567890",
+        "category": "dekor",
+        "packageName": "Dekor Minimalis",
+        "eventDate": "2026-11-10",
+        "total": 5000000,
+        "dpPaid": 1000000,
+        "remaining": 4000000,
+        "overdue": true,
+        "daysUntil": -2
+      }
+    ],
+    "pagination": { "page": 1, "limit": 20, "total": 1, "totalPages": 1 }
+  }
+}
+```
+
+---
+
+### 16.8 `GET /api/admin/finance/export`
+Mengunduh laporan keuangan dalam format berkas `.xlsx` (`exceljs`) atau `.pdf` (`pdfkit`, streaming langsung).
+
+- **Query wajib:**
+  - `report`: `"recap"` atau `"transactions"`
+  - `format`: `"pdf"` atau `"xlsx"`
+- **Query opsional (menyesuaikan `report`):**
+  - Jika `report=recap`: `groupBy`, `year`, `fromYear`, `toYear`
+  - Jika `report=transactions`: `from`, `to`, `type`, `category`, `method`, `source`, `status`, `q`, `sort`
+- **Keamanan, Batas & Header Respons:**
+  - `Content-Type`: `application/pdf` atau `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+  - `Content-Disposition`: `attachment; filename="<nama-aman-server>.(pdf|xlsx)"`
+  - `Cache-Control`: `no-store`
+  - `X-Content-Type-Options`: `nosniff`
+  - **Batas baris (`transactions`):** Maksimal **2.000 baris** untuk `pdf` dan **20.000 baris** untuk `xlsx` (diperiksa sebelum pembuatan berkas; bila melebihi mengembalikan `400`).
+  - **Rate limit:** Maksimal `FINANCE_EXPORT_MAX` (default `10`) permintaan ekspor per **10 menit per akun admin**; melebihi batas mengembalikan `429`. Catatan hosting: atur `app.set('trust proxy', ...)` bila berada di belakang proxy, dan penyimpanan hitungan berada di memori server (hilang saat restart serta tidak dibagi antar-instance).
+  - **Keamanan spreadsheet:** Semua sel teks dari data pelanggan/pesanan disanitasi agar tidak pernah dievaluasi sebagai rumus Excel (`=`, `+`, `-`, `@`, dll.), dan berkas ekspor tidak menyertakan email, nomor rekening, QRIS, `publicId`, atau URL bukti transfer.
+- **Catatan Penting untuk Frontend (Unduhan dengan Token JWT):**
+  Karena endpoint ini membutuhkan header `Authorization: Bearer <token>`, **jangan gunakan tautan langsung** (`<a href="/api/admin/finance/export?...">` atau `window.open(...)`) karena browser tidak menyertakan header `Authorization`. Ambil berkas sebagai `Blob` melalui `fetch` / `axios`, lalu picu unduhan secara programatis:
+  ```javascript
+  const res = await fetch(`/api/admin/finance/export?report=transactions&format=xlsx&from=2026-11-01&to=2026-11-12`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error('Gagal mengunduh laporan');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'laporan-transaksi.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  ```
+
+---
+
+## 17. Modul Blog & Pengelolaan Artikel (`/api/posts` & `/api/admin/posts`)
+
+Modul Blog melayani penyajian artikel edukasi dan promosi untuk publik serta antarmuka pengelolaan artikel oleh admin.
+
+### 17.1 Aturan Bisnis & Keamanan Artikel
+1. **Status Artikel:**
+   - Hanya memiliki dua status: `draft` dan `published` (tanpa penjadwalan).
+   - Artikel baru yang dibuat admin selalu berstatus `draft`.
+   - Artikel hanya dapat diterbitkan (`published`) melalui endpoint `PATCH /:id/status` jika memiliki `title` dan isi teks polos artikel minimal **20 karakter**.
+   - `publishedAt` dicatat saat artikel pertama kali diterbitkan dan **tidak berubah** jika status diturunkan ke `draft` lalu diterbitkan kembali.
+2. **Aturan Slug:**
+   - Dibuat otomatis dari judul artikel (`slugify` huruf kecil, tanda strip, tanpa karakter khusus).
+   - Kata `"tags"` dicadangkan (reserved) agar tidak bentrok dengan rute `/api/posts/tags`; jika judul menghasilkan slug `"tags"`, otomatis dialihkan ke `"tags-2"`.
+   - Bentrok slug ditangani dengan suffix angka berurutan (`-2`, `-3`, dst.).
+   - Slug diperbarui saat judul berubah **hanya selama artikel belum pernah terbit** (`publishedAt` masih `null`). Setelah artikel pernah terbit, slug terkunci permanen demi menjaga SEO dan permalink.
+3. **Sanitasi HTML (Keamanan Backend):**
+   - Isi artikel (`content`) disimpan dalam bentuk HTML yang **wajib disanitasi ketat** di backend menggunakan paket `sanitize-html` sebelum disimpan ke database (POST dan PUT).
+   - **Tag yang diizinkan:** `p`, `br`, `h2`, `h3`, `h4`, `strong`, `em`, `u`, `s`, `blockquote`, `ul`, `ol`, `li`, `a`, `img`, `figure`, `figcaption`, `hr`, `code`, `pre`.
+   - Tag berbahaya (`script`, `style`, `iframe`, `svg`, `form`, `input`, dsb.) dibuang beserta isinya.
+   - Atribut berbahaya (`style`, `class`, `id`, `srcset`, `on*`) dibuang seluruhnya.
+   - **Tautan (`<a>`):** Hanya protokol `http`, `https`, `mailto`, `tel`. Semua tautan otomatis ditambahkan atribut `target="_blank"` dan `rel="noopener noreferrer"`. Protokol `javascript:`, `data:`, `vbscript:` ditolak total.
+   - **Gambar (`<img>`):** Hanya diizinkan jika atribut `src` mengarah ke akun Cloudinary Kalila (`https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/...`). Gambar dari domain eksternal lain dibuang. Atribut `width` dan `height` hanya menerima angka bulat 1–4000.
+   - **Kolom Teks Biasa:** Kolom `title`, `excerpt`, `metaDescription`, `authorName`, dan `tags` dibersihkan dari seluruh tag HTML sebelum disimpan (`allowedTags: []`).
+   - **Ringkasan Otomatis (`excerpt`):** Jika `excerpt` dikosongkan oleh admin, sistem secara otomatis mengekstrak sekitar 200 karakter teks polos pertama yang dipotong rapi pada batas kata dan diakhiri `...`.
+   - **Waktu Baca (`readingTimeMinutes`):** Dihitung otomatis dari estimasi 200 kata teks polos per menit, minimal 1 menit.
+4. **Batas Ukuran Body:**
+   - Endpoint `POST /api/admin/posts` dan `PUT /api/admin/posts/:id` mendukung body JSON hingga **300 KB** untuk mengakomodasi teks artikel hingga 200.000 karakter, sedangkan parser global untuk rute lain tetap pada batas default (100 KB). Payload yang melebihi batas mengembalikan status `413` dengan pesan berbahasa Indonesia.
+5. **Pengelolaan Gambar Cloudinary:**
+   - Gambar sampul (`cover`) dan gambar isi artikel (`contentImages`) disimpan di Cloudinary pada folder `"kalila/blog"`.
+   - Gambar isi artikel dibatasi maksimal **30 gambar** per artikel.
+   - Menghapus artikel akan menghapus seluruh aset gambar Cloudinary terkait secara otomatis.
+
+---
+
+### 17.2 Endpoint Blog Publik
+
+#### 17.2.1 `GET /api/posts`
+Mengambil daftar ringkas artikel yang berstatus `published`.
+
+- **Autentikasi:** Publik (tanpa token).
+- **Query Parameter:**
+  - `q` (string, opsional, maks 100): Mencari kata kunci pada judul, ringkasan, atau tag. Karakter regex di-escape aman.
+  - `tag` (string, opsional): Memfilter artikel berdasarkan tag spesifik.
+  - `page` (number, default `1`, min `1`): Nomor halaman.
+  - `limit` (number, default `12`, min `1`, maks `50`): Jumlah artikel per halaman (di atas 50 mengembalikan 400).
+  - `sort` (enum: `'terbaru'` | `'terlama'`, default `'terbaru'`): Urutan berdasarkan `publishedAt`.
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Daftar artikel berhasil diambil",
+  "data": {
+    "items": [
+      {
+        "slug": "tips-memilih-dekorasi-pernikahan-outdoor",
+        "title": "Tips Memilih Dekorasi Pernikahan Outdoor",
+        "excerpt": "Panduan lengkap memilih konsep pelaminan dan tenda untuk pernikahan bertema kebun yang elegan...",
+        "cover": "https://res.cloudinary.com/kalila/image/upload/v12345/kalila/blog/cover1.webp",
+        "tags": ["dekorasi", "outdoor", "tips"],
+        "publishedAt": "2026-11-10T08:00:00.000Z",
+        "readingTimeMinutes": 3,
+        "authorName": "Admin Kalila"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 12,
+      "total": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+*(Catatan: Respons publik tidak pernah memuat `publicId`, `createdBy`, `status`, atau ID internal).*
+
+---
+
+#### 17.2.2 `GET /api/posts/tags`
+Mengambil daftar seluruh tag dari artikel yang telah terbit beserta frekuensinya.
+
+- **Autentikasi:** Publik (tanpa token).
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Daftar tag artikel berhasil diambil",
+  "data": [
+    { "tag": "dekorasi", "count": 5 },
+    { "tag": "catering", "count": 3 },
+    { "tag": "tips", "count": 2 }
+  ]
+}
+```
+
+---
+
+#### 17.2.3 `GET /api/posts/:slug`
+Mengambil detail artikel terbit berdasarkan slug.
+
+- **Autentikasi:** Publik (tanpa token).
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Detail artikel berhasil diambil",
+  "data": {
+    "slug": "tips-memilih-dekorasi-pernikahan-outdoor",
+    "title": "Tips Memilih Dekorasi Pernikahan Outdoor",
+    "content": "<p>Menyiapkan pernikahan outdoor membutuhkan perencanaan matang...</p>",
+    "excerpt": "Panduan lengkap memilih konsep pelaminan...",
+    "metaDescription": "Tips praktis memilih dekorasi pernikahan kebun outdoor.",
+    "cover": "https://res.cloudinary.com/kalila/image/upload/v12345/kalila/blog/cover1.webp",
+    "tags": ["dekorasi", "outdoor"],
+    "publishedAt": "2026-11-10T08:00:00.000Z",
+    "updatedAt": "2026-11-11T09:30:00.000Z",
+    "readingTimeMinutes": 3,
+    "authorName": "Kalila Wedding, Dekor & Catering"
+  }
+}
+```
+- **Error `404 Not Found`:** Bila artikel tidak ditemukan atau berstatus `draft`.
+
+---
+
+### 17.3 Endpoint Pengelolaan Blog Admin (`/api/admin/posts`)
+
+Seluruh endpoint di bawah ini membutuhkan header `Authorization: Bearer <token>` milik akun berstatus **admin**.
+
+#### 17.3.1 `GET /api/admin/posts`
+Mengambil daftar artikel untuk admin (mencakup artikel `draft` dan `published`).
+
+- **Query Parameter:**
+  - `status` (`'draft'` | `'published'`, opsional)
+  - `tag` (string, opsional)
+  - `q` (string, opsional)
+  - `page` (number, default `1`)
+  - `limit` (number, default `10`, maks `100`)
+  - `sort` (`'terbaru'` | `'terlama'` | `'judul'`, default `'terbaru'`)
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Daftar artikel admin berhasil diambil",
+  "data": {
+    "items": [
+      {
+        "id": "673000000000000000000001",
+        "title": "Tips Memilih Dekorasi Pernikahan",
+        "slug": "tips-memilih-dekorasi-pernikahan",
+        "status": "draft",
+        "excerpt": "Panduan lengkap...",
+        "cover": "https://res.cloudinary.com/...",
+        "tags": ["dekorasi"],
+        "authorName": "Admin Kalila",
+        "publishedAt": null,
+        "createdAt": "2026-11-13T01:00:00.000Z",
+        "updatedAt": "2026-11-13T01:00:00.000Z",
+        "readingTimeMinutes": 2,
+        "imagesCount": 2,
+        "createdBy": {
+          "id": "672000000000000000000001",
+          "name": "Admin Utama"
+        }
+      }
+    ],
+    "pagination": { "page": 1, "limit": 10, "total": 1, "totalPages": 1 }
+  }
+}
+```
+
+---
+
+#### 17.3.2 `GET /api/admin/posts/:id`
+Mengambil detail lengkap artikel untuk penyuntingan atau pratinjau draft.
+
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Detail artikel admin berhasil diambil",
+  "data": {
+    "id": "673000000000000000000001",
+    "title": "Tips Memilih Dekorasi Pernikahan",
+    "slug": "tips-memilih-dekorasi-pernikahan",
+    "status": "draft",
+    "content": "<p>Isi artikel lengkap tersanitasi...</p>",
+    "excerpt": "Ringkasan artikel...",
+    "metaDescription": "Meta deskripsi...",
+    "coverImage": { "url": "https://res.cloudinary.com/..." },
+    "contentImages": [
+      { "_id": "6730000000000000000000aa", "url": "https://res.cloudinary.com/..." }
+    ],
+    "tags": ["dekorasi"],
+    "authorName": "Admin Kalila",
+    "publishedAt": null,
+    "createdAt": "2026-11-13T01:00:00.000Z",
+    "updatedAt": "2026-11-13T01:00:00.000Z",
+    "readingTimeMinutes": 2,
+    "createdBy": { "id": "672000000000000000000001", "name": "Admin Utama" }
+  }
+}
+```
+
+---
+
+#### 17.3.3 `POST /api/admin/posts`
+Membuat draft artikel baru (selalu status `draft`; unggah gambar dilakukan lewat endpoint terpisah).
+
+- **Request Body (JSON, maks 300 KB):**
+```json
+{
+  "title": "Panduan Memilih Menu Catering Wedding",
+  "content": "<p>Pemilihan menu catering memegang peranan krusial dalam kenyamanan para tamu undangan...</p>",
+  "excerpt": "Ringkasan opsional (jika kosong akan dibuat otomatis)...",
+  "metaDescription": "Tips catering pernikahan.",
+  "authorName": "Chef Kalila",
+  "tags": ["catering", "wedding"]
+}
+```
+- **Respons `201 Created`:** Mengembalikan objek detail artikel berstatus `draft`.
+
+---
+
+#### 17.3.4 `PUT /api/admin/posts/:id`
+Memperbarui data artikel. Jika judul diubah saat artikel belum pernah terbit, slug akan diperbarui otomatis. Jika artikel sudah pernah terbit, slug tetap dipertahankan.
+
+- **Request Body (JSON, maks 300 KB):** Field yang ingin diperbarui (`title`, `content`, `excerpt`, `metaDescription`, `authorName`, `tags`).
+- **Respons `200 OK`:** Mengembalikan detail artikel yang telah diperbarui dan disanitasi.
+
+---
+
+#### 17.3.5 `PATCH /api/admin/posts/:id/status`
+Mengubah status publikasi artikel.
+
+- **Request Body:**
+```json
+{
+  "status": "published"
+}
+```
+- **Aturan Publikasi:**
+  - `title` wajib ada dan teks polos `content` minimal 20 karakter (jika tidak memenuhi, ditolak dengan `400 Bad Request`).
+  - Publikasi pertama kali akan menetapkan tanggal `publishedAt`.
+  - Mengubah status ke `draft` dan menerbitkan kembali tetap mempertahankan nilai `publishedAt` pertama.
+  - Bersifat idempoten dan aman dari balapan (race condition).
+- **Respons `200 OK`:** Mengembalikan detail artikel dengan status terbaru.
+
+---
+
+#### 17.3.6 `DELETE /api/admin/posts/:id`
+Menghapus artikel beserta seluruh aset gambarnya (cover dan seluruh gambar isi) di Cloudinary.
+
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Artikel berhasil dihapus",
+  "data": { "id": "673000000000000000000001", "title": "Panduan Memilih Menu Catering Wedding" }
+}
+```
+
+---
+
+#### 17.3.7 `POST /api/admin/posts/:id/cover`
+Mengunggah atau mengganti gambar sampul artikel (`form-data` dengan key `'image'`). Jika sudah ada gambar sampul lama, aset lama otomatis dihapus dari Cloudinary.
+
+- **Request:** `multipart/form-data` (file maksimal 5 MB, format JPG/PNG/WEBP).
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Gambar sampul artikel berhasil diunggah",
+  "data": { "url": "https://res.cloudinary.com/kalila/image/upload/v12345/kalila/blog/cover-new.webp" }
+}
+```
+
+---
+
+#### 17.3.8 `DELETE /api/admin/posts/:id/cover`
+Menghapus gambar sampul artikel dari database dan Cloudinary.
+
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Gambar sampul artikel berhasil dihapus"
+}
+```
+
+---
+
+#### 17.3.9 `POST /api/admin/posts/:id/images`
+Mengunggah 1 sampai 5 gambar isi artikel (`form-data` dengan key `'images'`). Total gambar isi per artikel maksimal 30 gambar.
+
+- **Request:** `multipart/form-data` (1–5 file, maks 5 MB per gambar).
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Gambar isi artikel berhasil diunggah",
+  "data": [
+    {
+      "_id": "6730000000000000000000b1",
+      "url": "https://res.cloudinary.com/kalila/image/upload/v12345/kalila/blog/content-1.webp"
+    }
+  ]
+}
+```
+*(Frontend dapat menyisipkan tag `<img src="...">` ke dalam editor artikel menggunakan URL yang dikembalikan).*
+
+---
+
+#### 17.3.10 `DELETE /api/admin/posts/:id/images/:imageId`
+Menghapus satu gambar isi artikel dari database dan Cloudinary berdasarkan subdocument `_id`.
+
+- **Respons `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Gambar isi artikel berhasil dihapus"
+}
+```
+
+---
+
+### 17.4 Petunjuk Integrasi untuk Frontend (Vue)
+1. **Alur Pembuatan Artikel:** Buat draft artikel terlebih dahulu (`POST /api/admin/posts`), kemudian gunakan ID artikel yang diperoleh untuk mengunggah gambar sampul (`POST /:id/cover`) dan gambar isi (`POST /:id/images`).
+2. **Editor Teks Kaya (Rich Text Editor):** Gunakan editor yang menghasilkan HTML murni (seperti Tiptap, Quill, atau TinyMCE), bukan format Markdown.
+3. **Penyisipan Gambar ke Isi:** Saat admin menyisipkan gambar ke dalam artikel, gunakan URL yang diperoleh dari endpoint `POST /:id/images` pada tag `<img src="URL" alt="..." />`.
+4. **Perenderaan dengan `v-html`:**
+   - HANYA kolom `content` yang dirender menggunakan `v-html` pada halaman baca artikel publik karena telah melalui sanitasi ketat di backend.
+   - Kolom `title`, `excerpt`, `metaDescription`, dan `authorName` **wajib** dirender sebagai teks biasa (interpolasi `{{ ... }}` atau `v-text`), bukan `v-html`.
+5. **Kebijakan Gambar Yatim:** Gambar isi yang dihapus dari teks artikel tetapi belum dihapus dari daftar `contentImages` akan tetap tersimpan hingga admin menghapusnya secara eksplisit lewat tombol kelola media atau saat artikel tersebut dihapus total.
+
+---
+
+## 18. Modul Autentikasi: Reset Password dengan OTP Email (`/api/auth`)
+
+Fitur pemulihan kata sandi pelanggan yang lupa password melalui kode OTP 6 angka acak kriptografis yang dikirimkan ke alamat email terdaftar.
+
+### 18.1 Alur Tiga Langkah (Three-Step Flow)
+1. **Langkah 1 (Minta OTP):** Pelanggan memasukkan email pada form lupa password. Sistem merespons seragam dan mengirim email berisi kode OTP 6 angka yang berlaku selama 10 menit (konfigurasi).
+2. **Langkah 2 (Verifikasi OTP):** Pelanggan memasukkan kode OTP 6 digit. Jika benar, sistem menghasilkan token reset sekali pakai (`resetToken`) berumur pendek.
+3. **Langkah 3 (Atur Password Baru):** Pelanggan memasukkan token reset dan password baru. Sistem memperbarui password dalam transaksi database, membatalkan seluruh token JWT login lama via `passwordChangedAt`, dan mengarahkan pelanggan ke halaman login (tidak login otomatis).
+
+---
+
+### 18.2 Endpoint Publik
+
+#### 18.2.1 `POST /api/auth/forgot-password`
+Mengajukan permohonan reset password dan meminta pengiriman kode OTP.
+
+- **Rate Limit:** 10 permintaan per 15 menit per IP (dapat diatur lewat `RESET_FORGOT_IP_MAX`).
+- **Request Body (`application/json`, strict):**
+```json
+{
+  "email": "pelanggan@example.com"
+}
+```
+- **Respons `200 OK` (Selalu Seragam):**
+```json
+{
+  "success": true,
+  "message": "Jika email terdaftar, kode OTP telah dikirim.",
+  "data": {
+    "expiresInMinutes": 10,
+    "resendAfterSeconds": 60
+  }
+}
+```
+*(Catatan Keamanan: Respons selalu 200 identik dengan nilai data konfigurasi, baik email terdaftar, tidak terdaftar, nonaktif, akun admin, maupun terkena cooldown, agar keberadaan akun tidak dapat ditebak).*
+
+- **Kemungkinan Kesalahan:**
+  - `400 Bad Request`: Format email tidak valid atau terdapat field asing.
+  - `429 Too Many Requests`: Terlalu banyak permintaan dari IP yang sama.
+  - `503 Service Unavailable`: Fitur reset password belum dikonfigurasi (`OTP_HMAC_SECRET` belum diisi/kurang dari 32 karakter).
+
+---
+
+#### 18.2.2 `POST /api/auth/verify-reset-otp`
+Memverifikasi 6 digit kode OTP dan menukarnya dengan token reset password sekali pakai.
+
+- **Rate Limit:**
+  - 30 permintaan per 15 menit per IP (`RESET_VERIFY_IP_MAX`).
+  - 10 percobaan per 15 menit per kunci hash email (`RESET_VERIFY_EMAIL_MAX`).
+- **Request Body (`application/json`, strict):**
+```json
+{
+  "email": "pelanggan@example.com",
+  "otp": "482910"
+}
+```
+- **Respons `200 OK` (OTP Benar):**
+```json
+{
+  "success": true,
+  "message": "Kode OTP berhasil diverifikasi",
+  "data": {
+    "resetToken": "A9k2Lm...base64url...",
+    "expiresInMinutes": 10
+  }
+}
+```
+- **Kemungkinan Kesalahan:**
+  - `400 Bad Request`:
+    - Format OTP bukan 6 digit angka: `"Kode OTP harus berupa 6 digit angka"`.
+    - OTP salah, kedaluwarsa, sudah digunakan, email tidak terdaftar, akun tidak berhak, atau batas percobaan habis:
+      ```json
+      {
+        "success": false,
+        "message": "Kode OTP salah atau sudah kedaluwarsa."
+      }
+      ```
+  - `429 Too Many Requests`: Terlalu banyak percobaan verifikasi.
+  - `503 Service Unavailable`: Fitur reset password belum dikonfigurasi.
+
+---
+
+#### 18.2.3 `POST /api/auth/reset-password`
+Menetapkan password baru menggunakan token reset yang valid.
+
+- **Rate Limit:** 10 permintaan per 15 menit per IP (`RESET_PASSWORD_IP_MAX`).
+- **Request Body (`application/json`, strict):**
+```json
+{
+  "resetToken": "A9k2Lm...base64url...",
+  "newPassword": "PasswordBaru123!"
+}
+```
+- **Kebijakan Password (`newPassword`):**
+  - Minimal 8 karakter dan maksimal 72 byte.
+  - Wajib mengandung minimal 1 huruf (`[a-zA-Z]`) dan minimal 1 angka (`[0-9]`).
+  - Tidak boleh sama dengan email pemilik akun.
+  - Tidak boleh sama dengan password lama akun tersebut.
+  - *Catatan: Pelanggaran kebijakan password mengembalikan 400 dan token reset TIDAK dihanguskan (tetap dapat dipakai ulang).*
+- **Respons `200 OK` (Sukses):**
+```json
+{
+  "success": true,
+  "message": "Password berhasil diubah. Silakan masuk dengan password baru."
+}
+```
+*(Catatan: Respons TIDAK menyertakan token JWT login. Pelanggan wajib diarahkan ke halaman login).*
+
+- **Kemungkinan Kesalahan:**
+  - `400 Bad Request`:
+    - Token reset tidak valid, kedaluwarsa, atau sudah digunakan: `"Token reset tidak valid atau sudah kedaluwarsa."`
+    - Password melanggar kebijakan: `"Password minimal 8 karakter"`, `"Password harus mengandung minimal satu huruf"`, `"Password tidak boleh sama dengan email"`, `"Password baru tidak boleh sama dengan password lama"`.
+  - `429 Too Many Requests`: Terlalu banyak permintaan dari IP yang sama.
+  - `503 Service Unavailable`: Fitur belum dikonfigurasi.
+
+---
+
+### 18.3 Variabel Lingkungan Baru
+
+Tambahkan ke `.env` backend:
+```env
+# Kunci rahasia HMAC-SHA256 untuk hash OTP & Token (Wajib, minimal 32 karakter acak)
+OTP_HMAC_SECRET=b7e1f4...minimal_32_karakter_acak...
+
+# Masa berlaku kode OTP dalam menit (Bawaan: 10)
+PASSWORD_RESET_OTP_TTL_MINUTES=10
+
+# Batas maksimal percobaan OTP salah sebelum di-lock (Bawaan: 5)
+PASSWORD_RESET_MAX_ATTEMPTS=5
+
+# Jeda waktu minimal antar-permintaan OTP dalam detik (Bawaan: 60)
+PASSWORD_RESET_COOLDOWN_SECONDS=60
+
+# Batas maksimal pengiriman OTP per akun dalam 1 jam (Bawaan: 5)
+PASSWORD_RESET_MAX_PER_HOUR=5
+
+# Izin reset password untuk akun peran admin (Bawaan: false)
+PASSWORD_RESET_ALLOW_ADMIN=false
+
+# Rate limiting Express (per 15 menit)
+RESET_FORGOT_IP_MAX=10
+RESET_VERIFY_IP_MAX=30
+RESET_VERIFY_EMAIL_MAX=10
+RESET_PASSWORD_IP_MAX=10
+
+# Debug OTP ke konsol (HANYA bekerja jika NODE_ENV="development")
+DEV_LOG_OTP=false
+```
+
+---
+
+### 18.4 Catatan Keamanan dan Arsitektur
+1. **Pencegahan Enumerasi Akun:** Endpoint `POST /forgot-password` merespons identik untuk semua akun, dan `POST /verify-reset-otp` melakukan kalkulasi dummy HMAC bila email tidak ada, sehingga waktu respons tidak membocorkan keberadaan akun.
+2. **Kerahasiaan Kode OTP:**
+   - Database `PasswordReset` HANYA menyimpan hash HMAC-SHA256 (tidak pernah menyimpan teks asli OTP maupun token reset).
+   - Log konsol provider email hanya mencatat tipe `password_reset_otp` dan email tersamar (tanpa subject dan tanpa body).
+   - Antrean admin (`GET /api/admin/emails`) menyembunyikan kolom `html` dan `text` untuk tipe OTP.
+   - Setelah email berstatus akhir (`sent`, `failed`, `skipped`), kolom `html` dan `text` dikosongkan dan dokumen dijadwalkan terhapus (`purgeAt = +1 hari`).
+3. **Pembatalan Sesi Login Lama:** Perubahan password dieksekusi melalui `user.save()`, yang secara otomatis memperbarui `passwordChangedAt`. Middleware autentikasi membandingkan `payload.iat < user.passwordChangedAt` sehingga seluruh token JWT lama langsung ditolak (401).
+4. **Rate Limiting & Proxy:** Pembatas laju menggunakan memori lokal instance. Pada server produksi di balik reverse proxy (seperti Nginx atau Cloudflare), pastikan `app.set('trust proxy', 1)` diaktifkan agar alamat IP klien terdeteksi dengan benar.
+
+---
+
+### 18.5 Petunjuk Integrasi untuk Frontend (Vue)
+1. **Tiga Layar / Tampilan Terpisah:**
+   - **Layar 1 (Input Email):** Input email dan tombol "Kirim Kode OTP". Setelah berhasil, simpan email di state dan arahkan ke Layar 2.
+   - **Layar 2 (Input OTP):** Tampilkan 6 kotak input angka untuk kode OTP. Pasang hitung mundur (countdown) berdasarkan `resendAfterSeconds` (60 detik) sebelum tombol "Kirim Ulang Kode" dapat ditekan kembali. Setelah verifikasi berhasil, simpan `resetToken` di memori dan arahkan ke Layar 3.
+   - **Layar 3 (Password Baru):** Input password baru dan konfirmasi password. Tampilkan indikator kekuatan password (minimal 8 karakter, huruf, dan angka).
+2. **Setelah Berhasil Reset:** Jangan mencoba login otomatis. Tampilkan toast/notifikasi sukses dan arahkan pengguna ke halaman `/login`.
+3. **Penanganan Status 429:** Tampilkan pesan error dari backend apa adanya jika pengguna terkena pembatasan laju (rate limit).

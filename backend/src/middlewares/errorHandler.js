@@ -8,7 +8,10 @@ exports.errorHandler = (err, req, res, next) => {
   let status = err.statusCode || 500;
   let message = err.message || 'Terjadi kesalahan pada server';
 
-  if (err.code === 11000) {                       // data unik sudah ada
+  if (err.type === 'entity.too.large' || err.status === 413 || err.statusCode === 413) {
+    status = 413;
+    message = 'Ukuran data yang dikirim melebihi batas yang diizinkan';
+  } else if (err.code === 11000) {                       // data unik sudah ada
     status = 409;
     message = `${Object.keys(err.keyValue)[0]} sudah terdaftar`;
   } else if (err.name === 'ValidationError') {    // validasi Mongoose

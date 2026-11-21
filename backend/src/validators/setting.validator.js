@@ -1,0 +1,100 @@
+const { z } = require('zod');
+const { normalizeWhatsapp, isValidPhoneNumber } = require('../utils/phone');
+
+const emailListSchema = z
+  .array(
+    z
+      .string({ invalid_type_error: 'Alamat email harus berupa string' })
+      .trim()
+      .email('Format email penerima notifikasi tidak valid')
+      .toLowerCase()
+  )
+  .transform((list) => Array.from(new Set(list)))
+  .refine((list) => list.length <= 5, {
+    message: 'Maksimal 5 alamat email per daftar penerima',
+  });
+
+const updateSettingSchema = z
+  .object({
+    businessName: z.string().trim().min(1, 'Nama usaha tidak boleh kosong').optional(),
+    adminWhatsapp: z
+      .string()
+      .trim()
+      .transform(normalizeWhatsapp)
+      .refine(
+        isValidPhoneNumber,
+        'Nomor WhatsApp admin tidak valid (harus nomor Indonesia yang valid, contoh: 08123456789 atau 628123456789)'
+      )
+      .optional(),
+    dpAmount: z
+      .number({ invalid_type_error: 'Nominal DP harus berupa angka' })
+      .int('Nominal DP harus berupa bilangan bulat')
+      .min(0, 'Nominal DP tidak boleh kurang dari 0')
+      .optional(),
+    paymentDeadlineHours: z
+      .number({ invalid_type_error: 'Batas waktu pembayaran harus berupa angka' })
+      .int('Batas waktu pembayaran harus berupa bilangan bulat')
+      .min(1, 'Batas waktu pembayaran minimal 1 jam')
+      .optional(),
+    maxProofAttempts: z
+      .number({ invalid_type_error: 'Maksimal percobaan unggah harus berupa angka' })
+      .int('Maksimal percobaan unggah harus berupa bilangan bulat')
+      .min(1, 'Maksimal percobaan unggah bukti minimal 1 kali')
+      .optional(),
+    rejectionExtensionHours: z
+      .number({ invalid_type_error: 'Perpanjangan waktu penolakan harus berupa angka' })
+      .int('Perpanjangan waktu penolakan harus berupa bilangan bulat')
+      .min(0, 'Perpanjangan waktu penolakan tidak boleh kurang dari 0')
+      .optional(),
+    maxEventsPerDay: z
+      .object({
+        dekor: z
+          .number({ invalid_type_error: 'Batas acara dekor harus berupa angka atau null' })
+          .int('Batas acara dekor harus berupa bilangan bulat')
+          .min(1, 'Batas acara dekor minimal 1')
+          .nullable()
+          .optional(),
+        catering: z
+          .number({ invalid_type_error: 'Batas acara catering harus berupa angka atau null' })
+          .int('Batas acara catering harus berupa bilangan bulat')
+          .min(1, 'Batas acara catering minimal 1')
+          .nullable()
+          .optional(),
+        wedding: z
+          .number({ invalid_type_error: 'Batas acara wedding harus berupa angka atau null' })
+          .int('Batas acara wedding harus berupa bilangan bulat')
+          .min(1, 'Batas acara wedding minimal 1')
+          .nullable()
+          .optional(),
+      })
+      .strict('Field di dalam maxEventsPerDay tidak dikenal')
+      .optional(),
+    bankName: z.string().trim().optional(),
+    accountNumber: z.string().trim().optional(),
+    accountHolder: z.string().trim().optional(),
+    kontak: z
+      .object({
+        email: z.string().trim().email('Format email kontak tidak valid').or(z.literal('')).optional(),
+        phone: z.string().trim().optional(),
+        address: z.string().trim().optional(),
+        instagram: z.string().trim().optional(),
+        facebook: z.string().trim().optional(),
+        tiktok: z.string().trim().optional(),
+      })
+      .strict('Field di dalam kontak tidak dikenal')
+      .optional(),
+    notificationRecipients: z
+      .object({
+        adminEmails: emailListSchema.optional(),
+        ownerEmails: emailListSchema.optional(),
+      })
+      .strict('Field di dalam notificationRecipients tidak dikenal')
+      .optional(),
+  })
+  .strict('Field pengaturan tidak dikenal');
+
+module.exports = {
+  updateSettingSchema,
+  normalizeWhatsapp,
+};
+
